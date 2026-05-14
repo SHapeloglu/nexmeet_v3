@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  nexmeet:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ../backend:/app/backend
+      - ../frontend:/app/frontend

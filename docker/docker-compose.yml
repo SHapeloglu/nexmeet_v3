@@ -10,6 +10,14 @@ services:
     restart: unless-stopped
     environment:
       - PYTHONUNBUFFERED=1
+      - SECRET_KEY=${SECRET_KEY}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:8000}
+      - MAX_FILE_SIZE_MB=${MAX_FILE_SIZE_MB:-100}
     volumes:
-      - ../backend:/app/backend
-      - ../frontend:/app/frontend
+      # Yüklenen dosyalar container dışında kalıcı olarak saklanır
+      - nexmeet_uploads:/app/uploads
+    env_file:
+      - ../.env
+
+volumes:
+  nexmeet_uploads:

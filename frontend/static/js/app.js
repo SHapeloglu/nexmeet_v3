@@ -10,7 +10,11 @@ const state = {
   roomId: null,
   peerId: null,
   userName: null,
+  joinToken: null,     // Sunucudan alınan JWT benzeri token
   ws: null,
+  wsReconnectTimer: null,
+  wsReconnectAttempts: 0,
+  wsReconnectMax: 5,
   micEnabled: true,
   camEnabled: true,
   screenSharing: false,
@@ -21,16 +25,48 @@ const state = {
   unreadMessages: 0,
   meetingStartTime: null,
   timerInterval: null,
+  // TTS
+  ttsEnabled: false,
+  ttsRecording: false,
+  ttsMediaRecorder: null,
+  ttsAudioChunks: [],
+  hasVoiceProfile: false,
+  voiceProfileRecorder: null,
+  voiceProfileChunks: [],
 };
 
 // ─── ICE Config ──────────────────────────────────────────────────────────────
-const ICE_CONFIG = {
-  iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' },
-  ]
-};
+// TURN sunucusu: simetrik NAT'ın arkasındaki kullanıcılar için şart.
+// Ücretsiz test: coturn (kendi sunucunuz) veya Metered.ca / Twilio gibi sağlayıcılar.
+//TURN_URLS, TURN_USER, TURN_PASS değerlerini kendi sunucunuzla doldurun.
+const TURN_URLS  = 'turn:nexmeet.powerbi.com.tr:3478';
+const TURN_USER  = 'nexmeet';
+const TURN_PASS  = '***ETKISIZ-TURN-PAROLASI***';
+const ICE_SERVERS = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+];
+
+if (TURN_URLS) {
+  ICE_SERVERS.push({
+    urls:       TURN_URLS,
+    username:   TURN_USER,
+    credential: TURN_PASS,
+  });
+}
+
+const ICE_CONFIG = { iceServers: ICE_SERVERS };
+
+function showLobbyWarning(msg) {
+  let el = document.getElementById('lobbyWarning');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'lobbyWarning';
+    el.style.cssText = 'background:rgba(248,113,113,0.15);border:1px solid rgba(248,113,113,0.4);border-radius:10px;padding:10px 14px;font-size:13px;color:#f87171;text-align:center;max-width:440px;line-height:1.5';
+    document.querySelector('.lobby-form').after(el);
+  }
+  el.innerHTML = msg;
+}
 
 // ─── Lobby ───────────────────────────────────────────────────────────────────
 async function initLobby() {
@@ -40,6 +76,10 @@ async function initLobby() {
     state.localStream = stream;
   } catch (e) {
     console.warn('Camera/Mic unavailable:', e);
+    // HTTP üzerinden kamera açılamaz — kullanıcıya bildir
+    if (!navigator.mediaDevices) {
+      showLobbyWarning('⚠️ Kamera/mikrofon için HTTPS gerekli. Sunucuyu <b>https://</b> ile açın veya ngrok kullanın. Yine de katılabilirsiniz.');
+    }
   }
 
   document.getElementById('previewMicBtn').addEventListener('click', () => {
@@ -100,6 +140,22 @@ async function joinMeeting() {
   state.localStream.getAudioTracks().forEach(t => t.enabled = state.micEnabled);
   state.localStream.getVideoTracks().forEach(t => t.enabled = state.camEnabled);
 
+  // Sunucudan join token al
+  try {
+    const res = await fetch('/api/join-token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: state.userName, room_id: state.roomId, peer_id: state.peerId }),
+    });
+    if (!res.ok) throw new Error('Token alınamadı');
+    const tokenData = await res.json();
+    state.joinToken = tokenData.token;
+  } catch (e) {
+    showToast('Sunucuya bağlanılamadı. Lütfen tekrar deneyin.');
+    console.error('Token fetch error:', e);
+    return;
+  }
+
   showScreen('meeting');
   initMeetingUI();
   connectWebSocket();
@@ -150,22 +206,44 @@ function updateTimer() {
 
 // ─── WebSocket Signaling ─────────────────────────────────────────────────────
 function connectWebSocket() {
+  if (state.wsReconnectAttempts >= state.wsReconnectMax) {
+    showToast('Sunucu bağlantısı kurulamadı. Sayfayı yenileyin.');
+    return;
+  }
+
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  const url = `${proto}://${location.host}/ws/${state.roomId}/${state.peerId}?name=${encodeURIComponent(state.userName)}`;
+  const url = `${proto}://${location.host}/ws/${state.roomId}/${state.peerId}?token=${encodeURIComponent(state.joinToken)}`;
   state.ws = new WebSocket(url);
 
   state.ws.onopen = () => {
     console.log('WS connected');
+    state.wsReconnectAttempts = 0;  // Başarılı bağlantıda sayacı sıfırla
   };
 
   state.ws.onmessage = async (event) => {
-    const msg = JSON.parse(event.data);
-    await handleSignal(msg);
+    // JSON parse hatasında uygulamayı çökertme
+    try {
+      const msg = JSON.parse(event.data);
+      await handleSignal(msg);
+    } catch (e) {
+      console.error('WS mesaj parse hatası:', e);
+    }
   };
 
-  state.ws.onclose = () => {
-    console.log('WS disconnected');
-    showToast('Sunucu bağlantısı kesildi.');
+  state.ws.onclose = (event) => {
+    console.log('WS disconnected, code:', event.code);
+    // 4001 = geçersiz token, 4003 = yetkisiz — yeniden bağlanma
+    if (event.code === 4001 || event.code === 4003) {
+      showToast('Oturum süresi doldu. Lütfen tekrar katılın.');
+      return;
+    }
+    // Toplantıdan kasıtlı ayrılma (code 1000) ise yeniden bağlanma
+    if (event.code === 1000) return;
+
+    state.wsReconnectAttempts++;
+    const delay = Math.min(1000 * Math.pow(2, state.wsReconnectAttempts), 16000);
+    showToast(`Bağlantı kesildi. ${delay / 1000}s içinde tekrar denenecek... (${state.wsReconnectAttempts}/${state.wsReconnectMax})`);
+    state.wsReconnectTimer = setTimeout(() => connectWebSocket(), delay);
   };
 
   state.ws.onerror = (e) => {
@@ -176,6 +254,8 @@ function connectWebSocket() {
 function sendSignal(data) {
   if (state.ws && state.ws.readyState === WebSocket.OPEN) {
     state.ws.send(JSON.stringify(data));
+  } else {
+    console.warn('WS hazır değil, mesaj gönderilemedi:', data.type);
   }
 }
 
@@ -184,6 +264,13 @@ async function handleSignal(msg) {
 
   switch (type) {
     case 'room-joined': {
+      // Geçmiş sohbet mesajlarını göster
+      if (msg.chat_history && msg.chat_history.length > 0) {
+        for (const chatMsg of msg.chat_history) {
+          addChatMessage(chatMsg.from_name, chatMsg.message, chatMsg.timestamp, false);
+        }
+        addSystemMessage(`── ${msg.chat_history.length} geçmiş mesaj yüklendi ──`);
+      }
       // We joined — create offers to all existing peers
       for (const peer of msg.peers) {
         await createPeerConnection(peer.id, peer.name, true);
@@ -197,6 +284,12 @@ async function handleSignal(msg) {
       // The new peer will initiate offers to us
       if (!state.peers[from]) {
         await createPeerConnection(from, from_name, false);
+      }
+      break;
+    }
+    case 'tts-audio': {
+      if (msg.audio_base64) {
+        await playTTSAudio(msg.audio_base64);
       }
       break;
     }
@@ -249,6 +342,11 @@ async function handleSignal(msg) {
     }
     case 'control-request': {
       onControlRequest(msg);
+      break;
+    }
+    case 'control-session-created': {
+      // Sunucu session_id atadı, kaydet
+      remote.sessionId = msg.session_id;
       break;
     }
     case 'control-response': {
@@ -871,7 +969,12 @@ function leaveMeeting() {
   if (state.screenSharing) stopScreenShare();
   if (remote.isViewing) stopRemoteControl();
 
-  state.ws?.close();
+  // Kasıtlı ayrılma — yeniden bağlanma zamanlayıcısını iptal et
+  if (state.wsReconnectTimer) {
+    clearTimeout(state.wsReconnectTimer);
+    state.wsReconnectTimer = null;
+  }
+  state.ws?.close(1000, 'User left');  // 1000 = normal kapanma
   state.localStream?.getTracks().forEach(t => t.stop());
 
   for (const peerId in state.peers) {
@@ -884,6 +987,8 @@ function leaveMeeting() {
   Object.assign(state, {
     localStream: null, screenStream: null, peers: {},
     roomId: null, peerId: null, ws: null,
+    joinToken: null,
+    wsReconnectAttempts: 0, wsReconnectTimer: null,
     recording: false, screenSharing: false,
     micEnabled: true, camEnabled: true,
     chatOpen: false, unreadMessages: 0,
@@ -964,12 +1069,6 @@ function initRemoteControl() {
   document.getElementById('remoteApproveBtn').addEventListener('click', approveControlRequest);
   document.getElementById('remoteAgentClose').addEventListener('click', () => showModal('remoteAgentModal', false));
   document.getElementById('remoteWaitCancel').addEventListener('click', cancelControlRequest);
-  document.getElementById('remoteViewerStop').addEventListener('click', stopRemoteControl);
-  document.getElementById('remoteViewerFullscreen').addEventListener('click', toggleRemoteFullscreen);
-  document.getElementById('copyAgentCmd').addEventListener('click', () => {
-    navigator.clipboard.writeText(document.getElementById('agentCmd').textContent);
-    showToast('Komut kopyalandı!');
-  });
 
   // Canvas mouse events
   const canvas = document.getElementById('remoteCanvas');
@@ -1021,23 +1120,11 @@ async function requestRemoteControl(peerId, peerName) {
     `"${peerName}" kullanıcısının izin vermesi bekleniyor...`;
   showModal('remoteWaitModal', true);
 
-  try {
-    const res = await fetch('/api/control/request', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        room_id: state.roomId,
-        controller_peer_id: state.peerId,
-        target_peer_id: peerId,
-        controller_name: state.userName,
-      })
-    });
-    const data = await res.json();
-    remote.sessionId = data.session_id;
-  } catch (e) {
-    showModal('remoteWaitModal', false);
-    showToast('Kontrol isteği gönderilemedi.');
-  }
+  // WebSocket üzerinden gönder (API değil)
+  sendSignal({
+    type: 'control-request',
+    target_peer_id: peerId,
+  });
 }
 
 function cancelControlRequest() {
@@ -1224,29 +1311,255 @@ function approveControlRequest() {
   showModal('remoteRequestModal', false);
   if (!pendingControlSession) return;
 
-  // Kullanıcıya ajan komutunu göster
+  // Sunucuya WebSocket üzerinden onayla
+  sendSignal({
+    type: 'control-response',
+    session_id: pendingControlSession,
+    approved: true,
+  });
+
+  // Ajan modalını doldur
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   const serverAddr = `${proto}://${location.host}`;
-  const cmd = `python agent.py --server ${serverAddr} --session ${pendingControlSession}`;
-  document.getElementById('agentCmd').textContent = cmd;
-  showModal('remoteAgentModal', true);
+  const session = pendingControlSession;
 
-  // Backend'e onayla
-  fetch('/api/control/respond', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ session_id: pendingControlSession, approved: true })
-  });
+  // Windows bilgileri
+  const winInfo = `Sunucu: ${serverAddr}\nOturum Kodu: ${session}`;
+  document.getElementById('agentCmdWindows').textContent = winInfo;
+
+  // Linux komutu
+  const linuxCmd = `chmod +x linux_agent.sh && ./linux_agent.sh\n# Sunucu: ${serverAddr}\n# Oturum: ${session}`;
+  document.getElementById('agentCmdLinux').textContent = linuxCmd;
+
+  showModal('remoteAgentModal', true);
   pendingControlSession = null;
+}
+
+function switchOsTab(os) {
+  document.querySelectorAll('.os-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('osWindows').style.display = os === 'windows' ? 'flex' : 'none';
+  document.getElementById('osLinux').style.display  = os === 'linux'   ? 'flex' : 'none';
+  event.target.classList.add('active');
+}
+
+function copyAgentInfo() {
+  const txt = document.getElementById('agentCmdWindows').textContent;
+  navigator.clipboard.writeText(txt);
+  showToast('Bilgiler kopyalandı!');
+}
+
+function copyAgentCmd() {
+  const txt = document.getElementById('agentCmdLinux').textContent;
+  navigator.clipboard.writeText(txt);
+  showToast('Komut kopyalandı!');
 }
 
 function denyControlRequest() {
   showModal('remoteRequestModal', false);
   if (!pendingControlSession) return;
-  fetch('/api/control/respond', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ session_id: pendingControlSession, approved: false })
+
+  sendSignal({
+    type: 'control-response',
+    session_id: pendingControlSession,
+    approved: false,
   });
+
   pendingControlSession = null;
+}
+
+// ─── TTS Pipeline ─────────────────────────────────────────────────────────────
+
+async function checkVoiceProfile() {
+  try {
+    const res = await fetch(`/api/tts/voice-profile/status?token=${state.joinToken}`);
+    const data = await res.json();
+    state.hasVoiceProfile = data.exists;
+    return data.exists;
+  } catch (e) {
+    console.error('Voice profile check error:', e);
+    return false;
+  }
+}
+
+async function startVoiceProfileRecording() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    state.voiceProfileChunks = [];
+    state.voiceProfileRecorder = new MediaRecorder(stream);
+
+    state.voiceProfileRecorder.ondataavailable = (e) => {
+      if (e.data.size > 0) state.voiceProfileChunks.push(e.data);
+    };
+
+    state.voiceProfileRecorder.onstop = async () => {
+      const blob = new Blob(state.voiceProfileChunks, { type: 'audio/wav' });
+      await uploadVoiceProfile(blob);
+      stream.getTracks().forEach(t => t.stop());
+    };
+
+    state.voiceProfileRecorder.start();
+    showToast('🎙️ Ses profili kaydediliyor... 30 saniye konuşun');
+
+    // 30 saniye sonra otomatik durdur
+    setTimeout(() => {
+      if (state.voiceProfileRecorder && state.voiceProfileRecorder.state === 'recording') {
+        state.voiceProfileRecorder.stop();
+      }
+    }, 30000);
+
+  } catch (e) {
+    console.error('Voice profile recording error:', e);
+    showToast('Mikrofon erişimi sağlanamadı');
+  }
+}
+
+async function uploadVoiceProfile(blob) {
+  try {
+    showToast('⏳ Ses profili işleniyor...');
+    const arrayBuffer = await blob.arrayBuffer();
+    const bytes = new Uint8Array(arrayBuffer);
+    let binary = '';
+    const chunkSize = 8192;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+    }
+    const base64 = btoa(binary);
+
+    const res = await fetch('/api/tts/voice-profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: state.joinToken,
+        audio_base64: base64,
+      }),
+    });
+
+    const data = await res.json();
+    if (data.success) {
+      state.hasVoiceProfile = true;
+      showToast('✅ Ses profili kaydedildi!');
+    }
+  } catch (e) {
+    console.error('Voice profile upload error:', e);
+    showToast('Ses profili yüklenemedi');
+  }
+}
+
+function toggleTTS() {
+  state.ttsEnabled = !state.ttsEnabled;
+  const btn = document.getElementById('ttsBtn');
+  if (btn) {
+    btn.classList.toggle('active', state.ttsEnabled);
+    btn.title = state.ttsEnabled ? 'Çeviriyi Kapat' : 'Çeviriyi Aç';
+  }
+
+  if (state.ttsEnabled) {
+    showToast('🌐 Anlık çeviri açıldı');
+    startTTSCapture();
+  } else {
+    showToast('Çeviri kapatıldı');
+    stopTTSCapture();
+  }
+}
+
+function startTTSCapture() {
+  if (!state.localStream) return;
+  state.ttsAudioChunks = [];
+
+  try {
+    state.ttsMediaRecorder = new MediaRecorder(state.localStream);
+
+    state.ttsMediaRecorder.ondataavailable = (e) => {
+      if (e.data.size > 0) state.ttsAudioChunks.push(e.data);
+    };
+
+    state.ttsMediaRecorder.onstop = async () => {
+      if (state.ttsAudioChunks.length > 0 && state.ttsEnabled) {
+        const blob = new Blob(state.ttsAudioChunks, { type: 'audio/wav' });
+        await processTTSChunk(blob);
+        state.ttsAudioChunks = [];
+      }
+      // Devam et
+      if (state.ttsEnabled && state.ttsMediaRecorder) {
+        state.ttsMediaRecorder.start();
+        setTimeout(() => {
+          if (state.ttsMediaRecorder && state.ttsMediaRecorder.state === 'recording') {
+            state.ttsMediaRecorder.stop();
+          }
+        }, 3000);
+      }
+    };
+
+    state.ttsMediaRecorder.start();
+    setTimeout(() => {
+      if (state.ttsMediaRecorder && state.ttsMediaRecorder.state === 'recording') {
+        state.ttsMediaRecorder.stop();
+      }
+    }, 3000);
+
+  } catch (e) {
+    console.error('TTS capture error:', e);
+  }
+}
+
+function stopTTSCapture() {
+  if (state.ttsMediaRecorder && state.ttsMediaRecorder.state !== 'inactive') {
+    state.ttsMediaRecorder.stop();
+  }
+  state.ttsMediaRecorder = null;
+  state.ttsAudioChunks = [];
+}
+
+async function processTTSChunk(blob) {
+  try {
+    const arrayBuffer = await blob.arrayBuffer();
+    const bytes = new Uint8Array(arrayBuffer);
+    let binary = '';
+    const chunkSize = 8192;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+    }
+    const base64 = btoa(binary);
+
+    const res = await fetch('/api/tts/synthesize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: state.joinToken,
+        audio_base64: base64,
+        source_lang: 'tr',
+        target_lang: 'en',
+        session_id: state.roomId,
+      }),
+    });
+
+    const data = await res.json();
+    if (data.audio_base64) {
+      // Sesi çal ve diğer kullanıcılara gönder
+      await playTTSAudio(data.audio_base64);
+      // WebSocket ile diğer kullanıcılara bildir
+      sendSignal({
+        type: 'tts-audio',
+        audio_base64: data.audio_base64,
+        from_name: state.userName,
+      });
+    }
+  } catch (e) {
+    console.error('TTS process error:', e);
+  }
+}
+
+async function playTTSAudio(base64Audio) {
+  try {
+    const binary = atob(base64Audio);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const blob = new Blob([bytes], { type: 'audio/wav' });
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    await audio.play();
+    audio.onended = () => URL.revokeObjectURL(url);
+  } catch (e) {
+    console.error('TTS audio play error:', e);
+  }
 }

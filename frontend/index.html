@@ -136,6 +136,12 @@
           <path d="M13 8l3 2-3 2"/>
         </svg>
       </button>
+      <button id="ttsBtn" class="ctrl-btn" title="Çeviriyi Aç" onclick="toggleTTS()">
+        🌐
+      </button>
+      <button id="voiceProfileBtn" class="ctrl-btn" title="Ses Profili Oluştur" onclick="startVoiceProfileRecording()">
+        🎙️
+      </button>
       <button id="leaveBtn" class="ctrl-btn leave" title="Toplantıdan Ayrıl">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
@@ -218,33 +224,71 @@
 
   <!-- ── Uzak Kontrol: Ajan Bilgisi Modal ── -->
   <div id="remoteAgentModal" class="modal-overlay" style="display:none">
-    <div class="modal-box">
+    <div class="modal-box" style="max-width:520px">
       <div class="modal-icon">✅</div>
       <h2>İzin Verildi!</h2>
-      <p>Karşı tarafın bilgisayarınızı kontrol edebilmesi için aşağıdaki ajanı çalıştırın:</p>
-      <div class="agent-steps">
+      <p>Karşı tarafın bilgisayarınızı kontrol edebilmesi için aşağıdaki adımları uygulayın:</p>
+
+      <!-- OS Seçimi -->
+      <div class="os-tabs">
+        <button class="os-tab active" onclick="switchOsTab('windows')">🪟 Windows</button>
+        <button class="os-tab" onclick="switchOsTab('linux')">🐧 Linux/Ubuntu</button>
+      </div>
+
+      <!-- Windows Adımları -->
+      <div id="osWindows" class="agent-steps">
         <div class="agent-step">
           <span class="step-num">1</span>
           <div>
-            <strong>Ajanı indirip kurun</strong>
-            <code>pip install pyautogui mss websockets pillow</code>
+            <strong>windows_agent.bat dosyasını indirin</strong>
+            <a class="file-download" href="/static/agent/windows_agent.bat" download>⬇ windows_agent.bat</a>
           </div>
         </div>
         <div class="agent-step">
           <span class="step-num">2</span>
           <div>
-            <strong>Ajanı başlatın</strong>
-            <code id="agentCmd">python agent.py --server ws://... --session ...</code>
-            <button class="copy-cmd-btn" id="copyAgentCmd">⎘ Kopyala</button>
+            <strong>agent.py dosyasını aynı klasöre indirin</strong>
+            <a class="file-download" href="/static/agent/agent.py" download>⬇ agent.py</a>
           </div>
         </div>
         <div class="agent-step">
           <span class="step-num">3</span>
           <div>
-            <strong>Ajan bağlandığında kontrol başlar</strong>
+            <strong>windows_agent.bat'ı çift tıklayın, şu bilgileri girin:</strong>
+            <code id="agentCmdWindows"></code>
+            <button class="copy-cmd-btn" onclick="copyAgentInfo()">⎘ Bilgileri Kopyala</button>
           </div>
         </div>
       </div>
+
+      <!-- Linux Adımları -->
+      <div id="osLinux" class="agent-steps" style="display:none">
+        <div class="agent-step">
+          <span class="step-num">1</span>
+          <div>
+            <strong>linux_agent.sh ve agent.py dosyalarını indirin</strong>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
+              <a class="file-download" href="/static/agent/linux_agent.sh" download>⬇ linux_agent.sh</a>
+              <a class="file-download" href="/static/agent/agent.py" download>⬇ agent.py</a>
+            </div>
+          </div>
+        </div>
+        <div class="agent-step">
+          <span class="step-num">2</span>
+          <div>
+            <strong>Terminalde çalıştırın:</strong>
+            <code id="agentCmdLinux"></code>
+            <button class="copy-cmd-btn" onclick="copyAgentCmd()">⎘ Kopyala</button>
+          </div>
+        </div>
+        <div class="agent-step">
+          <span class="step-num">3</span>
+          <div>
+            <strong>Sunucu ve oturum kodunu girin, bağlanın</strong>
+          </div>
+        </div>
+      </div>
+
       <div class="modal-actions">
         <button class="modal-btn-cancel" id="remoteAgentClose">Kapat</button>
       </div>

@@ -58,6 +58,19 @@ BLOCKED_EXTENSIONS = {
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+FILE_TTL_SECONDS = 3600  # Dosyalar 1 saat sonra silinir (değiştirilebilir)
+
+async def auto_delete_file(file_id: str, path: str, delay: int):
+    """Belirtilen süre sonra dosyayı sil."""
+    await asyncio.sleep(delay)
+    shared_files.pop(file_id, None)
+    try:
+        if os.path.exists(path):
+            os.unlink(path)
+            logger.info(f"Otomatik silindi: {path}")
+    except Exception as e:
+        logger.error(f"Silme hatası: {e}")
+
 # ─── Rate Limiter ─────────────────────────────────────────────────────────────
 limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(title="NexMeet")
@@ -135,13 +148,7 @@ def validate_file(filename: str, content_type: str, content: bytes) -> str:
             detail=f"'{ext}' uzantılı dosyalar güvenlik nedeniyle yüklenemez."
         )
 
-    # Content-type doğrulaması
-    detected = mimetypes.guess_type(safe_name)[0] or content_type or "application/octet-stream"
-    if detected not in ALLOWED_MIME_TYPES and content_type not in ALLOWED_MIME_TYPES:
-        raise HTTPException(
-            status_code=415,
-            detail="Bu dosya türü desteklenmiyor."
-        )
+    # MIME type kontrolü kaldırıldı - sadece tehlikeli uzantılar engellendi
 
     return safe_name
 
@@ -291,7 +298,9 @@ async def upload_file(
     })
 
     logger.info(f"File uploaded: {safe_name} ({len(content)} bytes) by {uploader_name} in {room_id}")
-    return {"file_id": file_id, "name": safe_name}
+    # Otomatik silme zamanlayıcısı
+    asyncio.create_task(auto_delete_file(file_id, save_path, FILE_TTL_SECONDS))
+    return {"file_id": file_id, "name": safe_name, "ttl": FILE_TTL_SECONDS}
 
 
 @app.get("/api/download/{file_id}")
@@ -413,7 +422,8 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, peer_id: str):
                 # Çevrilmiş sesi odadaki herkese gönder
                 await manager.broadcast_to_room(room_id, {
                     "type": "tts-audio",
-                    "audio_base64": data.get("audio_base64"),
+                    "audio_base64": data.get("audio_base64", ""),
+                "text": data.get("text", ""),
                     "from": peer_id,
                     "from_name": name,
                 }, exclude_peer=peer_id)
@@ -729,7 +739,8 @@ async def tts_synthesize(request: Request, data: dict):
         response = await client.post(
             f"{TTS_SERVICE_URL}/synthesize",
             json={
-                "audio_base64": data.get("audio_base64"),
+                "audio_base64": data.get("audio_base64", ""),
+                "text": data.get("text", ""),
                 "peer_id": entry["peer_id"],
                 "source_lang": data.get("source_lang", "tr"),
                 "target_lang": data.get("target_lang", "en"),
@@ -750,7 +761,8 @@ async def tts_voice_profile(request: Request, data: dict):
         response = await client.post(
             f"{TTS_SERVICE_URL}/voice-profile",
             json={
-                "audio_base64": data.get("audio_base64"),
+                "audio_base64": data.get("audio_base64", ""),
+                "text": data.get("text", ""),
                 "peer_id": entry["peer_id"],
             },
             headers={"x-api-key": TTS_API_KEY},

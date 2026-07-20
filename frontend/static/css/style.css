@@ -488,6 +488,37 @@ body {
   .topbar-left .logo-sm span { display: none; }
   :root { --ctrl-size: 44px; }
   .controls-center { gap: 6px; }
+  /* Mobil: ikonlar altta kalmasın */
+  .controls-bar {
+    padding: 6px 8px;
+    height: auto;
+    min-height: 56px;
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+  }
+  :root { --ctrl-size: 38px; }
+  .ctrl-btn svg { width: 18px; height: 18px; }
+  /* Mobil: video grid dikey */
+  .video-grid.count-2 {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr 1fr;
+  }
+  /* Mobil: pinned layout dikey */
+  .video-grid.pinned {
+    flex-direction: column;
+  }
+  .video-grid.pinned .sidebar-tiles {
+    flex-direction: row;
+    width: 100%;
+    min-width: 0;
+    height: 100px;
+    min-height: 100px;
+  }
+  .video-grid.pinned .sidebar-tiles .video-tile {
+    width: 140px;
+    height: 100px;
+    min-height: 100px;
+    flex: none;
+  }
 }
 
 /* ── Modals ── */
@@ -647,4 +678,60 @@ body {
 .os-tab.active {
   border-color: var(--accent); color: var(--accent);
   background: rgba(110,231,183,0.08);
+}
+
+/* Pin layout */
+.video-grid.pinned {
+  display: flex;
+  flex-direction: row;
+  gap: 10px;
+}
+.video-grid.pinned .video-tile {
+  min-height: 120px;
+}
+.video-grid.pinned .video-tile.pinned-tile {
+  flex: 1;
+  min-width: 0;
+}
+.video-grid.pinned .sidebar-tiles {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 180px;
+  min-width: 180px;
+  overflow-y: auto;
+}
+.video-grid.pinned .sidebar-tiles .video-tile {
+  width: 180px;
+  height: 120px;
+  min-height: 120px;
+  flex: none;
+}
+.pin-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: rgba(0,0,0,0.5);
+  border: none;
+  border-radius: 6px;
+  color: white;
+  cursor: pointer;
+  padding: 4px 7px;
+  font-size: 14px;
+  z-index: 10;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.video-tile:hover .pin-btn { opacity: 1; }
+.video-tile.pinned-tile .pin-btn { opacity: 1; background: var(--accent); }
+.auto-pin-indicator {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  background: rgba(0,0,0,0.5);
+  border-radius: 6px;
+  color: #4ade80;
+  font-size: 11px;
+  padding: 2px 6px;
+  z-index: 10;
 }

@@ -30,6 +30,10 @@ const state = {
   ttsRecording: false,
   ttsMediaRecorder: null,
   ttsAudioChunks: [],
+  ttsProcessing: false,
+  pinnedPeerId: null,
+  autoPinEnabled: true,
+  speakingPeerId: null,
   hasVoiceProfile: false,
   voiceProfileRecorder: null,
   voiceProfileChunks: [],
@@ -487,15 +491,96 @@ function addVideoTile(peerId, stream, name, isLocal) {
   tile.appendChild(video);
   tile.appendChild(overlay);
   tile.appendChild(label);
+  const pinBtn = document.createElement("button");
+  pinBtn.className = "pin-btn";
+  pinBtn.title = "Sabitle";
+  pinBtn.innerHTML = "📌";
+  pinBtn.onclick = (e) => { e.stopPropagation(); togglePin(peerId); };
+  tile.appendChild(pinBtn);
   grid.appendChild(tile);
 
+  // Ses seviyesi algılama
+  if (stream) {
+    try {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const source = audioCtx.createMediaStreamSource(stream);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 512;
+      source.connect(analyser);
+      const data = new Uint8Array(analyser.frequencyBinCount);
+      let lastSpeak = 0;
+      (function checkVolume() {
+        analyser.getByteFrequencyData(data);
+        const avg = data.reduce((a,b)=>a+b,0)/data.length;
+        const t = document.getElementById("tile-"+peerId);
+        if (!t) { audioCtx.close(); return; }
+        if (avg > 15) { lastSpeak=Date.now(); setSpeaking(peerId); t.classList.add("speaking"); }
+        else if (Date.now()-lastSpeak > 1500) { t.classList.remove("speaking"); }
+        requestAnimationFrame(checkVolume);
+      })();
+    } catch(e) {}
+  }
   updateGrid();
 }
 
 function updateGrid() {
   const grid = document.getElementById('videoGrid');
-  const tiles = grid.querySelectorAll('.video-tile');
-  const count = tiles.length;
+  const allTiles = Array.from(grid.querySelectorAll('.video-tile:not(.sidebar-tiles .video-tile)'));
+  const count = allTiles.length;
+
+  // Pin varsa veya auto-pin aktifse
+  const activePinId = state.pinnedPeerId || (state.autoPinEnabled ? state.speakingPeerId : null);
+
+  if (activePinId && count > 1) {
+    const pinnedTile = document.getElementById(`tile-${activePinId}`);
+    if (!pinnedTile) { fallbackGrid(grid, allTiles, count); return; }
+
+    grid.className = 'video-grid pinned';
+
+    // Sidebar oluştur
+    let sidebar = grid.querySelector('.sidebar-tiles');
+    if (!sidebar) {
+      sidebar = document.createElement('div');
+      sidebar.className = 'sidebar-tiles';
+      grid.appendChild(sidebar);
+    }
+
+    // Pinned tile ana alana
+    pinnedTile.classList.add('pinned-tile');
+    grid.insertBefore(pinnedTile, sidebar);
+
+    // Diğerlerini sidebar'a
+    allTiles.forEach(tile => {
+      if (tile.id !== `tile-${activePinId}`) {
+        tile.classList.remove('pinned-tile');
+        sidebar.appendChild(tile);
+      }
+    });
+
+    // Auto-pin göstergesi
+    allTiles.forEach(tile => {
+      const existing = tile.querySelector('.auto-pin-indicator');
+      if (existing) existing.remove();
+    });
+    if (!state.pinnedPeerId && state.autoPinEnabled && activePinId) {
+      const indicator = document.createElement('div');
+      indicator.className = 'auto-pin-indicator';
+      indicator.textContent = '🎤 Aktif';
+      pinnedTile.appendChild(indicator);
+    }
+  } else {
+    fallbackGrid(grid, allTiles, count);
+  }
+}
+
+function fallbackGrid(grid, allTiles, count) {
+  // Sidebar varsa temizle
+  const sidebar = grid.querySelector('.sidebar-tiles');
+  if (sidebar) {
+    Array.from(sidebar.querySelectorAll('.video-tile')).forEach(t => grid.insertBefore(t, sidebar));
+    sidebar.remove();
+  }
+  allTiles.forEach(t => t.classList.remove('pinned-tile'));
   grid.className = 'video-grid';
   if (count === 1) grid.classList.add('count-1');
   else if (count === 2) grid.classList.add('count-2');
@@ -503,6 +588,28 @@ function updateGrid() {
   else if (count === 4) grid.classList.add('count-4');
   else if (count <= 6) grid.classList.add(`count-${count}`);
   else grid.classList.add('count-many');
+}
+
+function togglePin(peerId) {
+  if (state.pinnedPeerId === peerId) {
+    state.pinnedPeerId = null;
+    showToast('Pin kaldırıldı');
+  } else {
+    state.pinnedPeerId = peerId;
+    state.autoPinEnabled = false;
+    showToast('Ekran sabitlendi 📌');
+  }
+  updateGrid();
+}
+
+function setSpeaking(peerId) {
+  // Kendi ekranında otomatik pin olmasın
+  if (peerId === state.peerId) return;
+  if (state.speakingPeerId === peerId) return;
+  state.speakingPeerId = peerId;
+  if (!state.pinnedPeerId && state.autoPinEnabled) {
+    updateGrid();
+  }
 }
 
 function updateRemoteMediaState(peerId, audioEnabled, videoEnabled) {
@@ -866,6 +973,7 @@ async function uploadFile(file) {
   formData.append('file', file);
   formData.append('peer_id', state.peerId);
   formData.append('uploader_name', state.userName);
+  formData.append('token', state.joinToken);
 
   return new Promise((resolve) => {
     const xhr = new XMLHttpRequest();
@@ -1463,81 +1571,77 @@ function toggleTTS() {
 }
 
 function startTTSCapture() {
-  if (!state.localStream) return;
-  state.ttsAudioChunks = [];
-
-  try {
-    state.ttsMediaRecorder = new MediaRecorder(state.localStream);
-
-    state.ttsMediaRecorder.ondataavailable = (e) => {
-      if (e.data.size > 0) state.ttsAudioChunks.push(e.data);
-    };
-
-    state.ttsMediaRecorder.onstop = async () => {
-      if (state.ttsAudioChunks.length > 0 && state.ttsEnabled) {
-        const blob = new Blob(state.ttsAudioChunks, { type: 'audio/wav' });
-        await processTTSChunk(blob);
-        state.ttsAudioChunks = [];
-      }
-      // Devam et
-      if (state.ttsEnabled && state.ttsMediaRecorder) {
-        state.ttsMediaRecorder.start();
-        setTimeout(() => {
-          if (state.ttsMediaRecorder && state.ttsMediaRecorder.state === 'recording') {
-            state.ttsMediaRecorder.stop();
-          }
-        }, 3000);
-      }
-    };
-
-    state.ttsMediaRecorder.start();
-    setTimeout(() => {
-      if (state.ttsMediaRecorder && state.ttsMediaRecorder.state === 'recording') {
-        state.ttsMediaRecorder.stop();
-      }
-    }, 3000);
-
-  } catch (e) {
-    console.error('TTS capture error:', e);
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    showToast('Tarayıcınız konuşma tanımayı desteklemiyor');
+    return;
   }
-}
-
-function stopTTSCapture() {
-  if (state.ttsMediaRecorder && state.ttsMediaRecorder.state !== 'inactive') {
-    state.ttsMediaRecorder.stop();
-  }
-  state.ttsMediaRecorder = null;
-  state.ttsAudioChunks = [];
-}
-
-async function processTTSChunk(blob) {
-  try {
-    const arrayBuffer = await blob.arrayBuffer();
-    const bytes = new Uint8Array(arrayBuffer);
-    let binary = '';
-    const chunkSize = 8192;
-    for (let i = 0; i < bytes.length; i += chunkSize) {
-      binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  state.ttsRecognition = new SpeechRecognition();
+  state.ttsRecognition.lang = 'tr-TR';
+  state.ttsRecognition.continuous = true;
+  state.ttsRecognition.interimResults = false;
+  state.ttsRecognition.onresult = async (event) => {
+    const text = event.results[event.results.length - 1][0].transcript.trim();
+    if (text && state.ttsEnabled) {
+      await processTTSText(text);
     }
-    const base64 = btoa(binary);
-
+  };
+  state.ttsRecognition.onerror = (e) => {
+    console.error('Speech recognition error:', e.error);
+  };
+  state.ttsRecognition.onend = () => {
+    if (state.ttsEnabled) {
+      state.ttsRecognition.start();
+    }
+  };
+  state.ttsRecognition.start();
+}
+function stopTTSCapture() {
+  if (state.ttsRecognition) {
+    state.ttsRecognition.onend = null;
+    state.ttsRecognition.stop();
+    state.ttsRecognition = null;
+  }
+}
+let currentTTSAudio = null;
+async function playTTSAudio(base64Audio) {
+  try {
+    if (currentTTSAudio) {
+      currentTTSAudio.pause();
+      currentTTSAudio = null;
+    }
+    const binary = atob(base64Audio);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const blob = new Blob([bytes], { type: 'audio/wav' });
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    currentTTSAudio = audio;
+    audio.play();
+    audio.onended = () => { URL.revokeObjectURL(url); currentTTSAudio = null; };
+  } catch (e) {
+    console.error('TTS audio play error:', e);
+  }
+}
+async function processTTSText(text) {
+  if (state.ttsProcessing) return;
+  state.ttsProcessing = true;
+  try {
     const res = await fetch('/api/tts/synthesize', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         token: state.joinToken,
-        audio_base64: base64,
+        audio_base64: '',
+        text: text,
         source_lang: 'tr',
         target_lang: 'en',
         session_id: state.roomId,
       }),
     });
-
     const data = await res.json();
     if (data.audio_base64) {
-      // Sesi çal ve diğer kullanıcılara gönder
-      await playTTSAudio(data.audio_base64);
-      // WebSocket ile diğer kullanıcılara bildir
+      playTTSAudio(data.audio_base64);
       sendSignal({
         type: 'tts-audio',
         audio_base64: data.audio_base64,
@@ -1545,21 +1649,9 @@ async function processTTSChunk(blob) {
       });
     }
   } catch (e) {
-    console.error('TTS process error:', e);
+    console.error('TTS text error:', e);
+  } finally {
+    state.ttsProcessing = false;
   }
 }
 
-async function playTTSAudio(base64Audio) {
-  try {
-    const binary = atob(base64Audio);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    const blob = new Blob([bytes], { type: 'audio/wav' });
-    const url = URL.createObjectURL(blob);
-    const audio = new Audio(url);
-    await audio.play();
-    audio.onended = () => URL.revokeObjectURL(url);
-  } catch (e) {
-    console.error('TTS audio play error:', e);
-  }
-}

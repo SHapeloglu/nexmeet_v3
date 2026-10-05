@@ -1,21 +1,18 @@
-# backlog.md — 🎥 NexMeet — Gerçek Zamanlı Video Konferans Fikir / Özellik Havuzu
+# backlog.md — NexMeet Fikir Havuzu
 
-Bu dosya henüz önceliklendirilmemiş, "bir gün yapılabilir" fikirler ve özellik talepleri içindir. Bir fikir somutlaşıp sıraya girdiğinde buradan çıkar, `task.md`ye taşınır.
-
-## Fikirler
-
-_(henüz boş — yeni bir fikir geldiğinde aşağıdaki şablonla ekle)_
-
-## Koddaki TODO / FIXME Notları
-
-_(kodda TODO/FIXME notu bulunamadı)_
+- SFU (mediasoup / LiveKit) — 4+ katılımcıda P2P mesh yükünü azaltmak için.
+- TURN sunucusu (coturn) kurulumu ve ICE yapılandırmasının .env'den gelmesi.
+- Ses klonlama: Kokoro yerine klonlama destekli model (GPU gerektirir) — maliyet/fayda değerlendirmesi.
+- Çeviri hedef dillerini genişletme (şu an TR→EN; Kokoro sesleri dil başına).
+- Oda/sohbet durumunu Redis'e taşıyıp çoklu worker desteği.
+- Bekleme odası / host onayı, oda şifresi.
+- Sunucu tarafı kayıt.
 
 ## Ekleme Şablonu
 
 ```markdown
 ### Başlık
-
 - **Kategori:** yeni özellik / iyileştirme / teknik borç / araştırma
-- **Neden istendi:** kısa gerekçe
-- **Notlar:** büyüklük tahmini, bağımlılıklar, riskler
+- **Neden:** kısa gerekçe
+- **Notlar:** büyüklük, bağımlılıklar, riskler
 ```

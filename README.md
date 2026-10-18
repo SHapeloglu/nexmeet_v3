@@ -1,8 +1,8 @@
 # 🎥 NexMeet — Gerçek Zamanlı Video Konferans
 
-WebRTC tabanlı, **ses klonlamalı anlık çeviri**, **uzak masaüstü kontrolü** ve **dosya paylaşımı** özelliklerine sahip modern video konferans platformu.
+WebRTC tabanlı video konferans: **anlık konuşma çevirisi (TR → EN)**, **uzak masaüstü kontrolü**, **dosya paylaşımı**, sohbet, ekran paylaşımı ve toplantı kaydı.
 
-> 🌐 **Canlı Demo:** [nexmeet.powerbi.com.tr](https://nexmeet.powerbi.com.tr)
+> Canlı: `nexmeet.powerbiegitimi.com`
 
 ---
 
@@ -10,53 +10,35 @@ WebRTC tabanlı, **ses klonlamalı anlık çeviri**, **uzak masaüstü kontrolü
 
 | Özellik | Açıklama |
 |---------|----------|
-| 🎥 **WebRTC Video/Ses** | P2P bağlantı, düşük gecikme |
-| 🌐 **Anlık Ses Çevirisi** | Türkçe konuş → İngilizce klon sesle karşıya gitsin |
-| 🖥️ **Ekran Paylaşımı** | Tüm ekran veya sekme paylaşımı |
-| 🕹️ **Uzak Masaüstü Kontrolü** | Karşı tarafın bilgisayarını fare/klavye ile kontrol et |
-| 📁 **Dosya Paylaşımı** | Sürükle-bırak, max 100 MB, güvenli MIME doğrulaması |
-| 💬 **Sohbet** | Oda geçmişli (son 50 mesaj), gerçek zamanlı |
-| 🔴 **Toplantı Kaydı** | Yerel kayıt, WebM formatında indirme |
-| 🔒 **Token Tabanlı Auth** | Her katılımcı için 1 saatlik join token |
-| 📡 **TURN Sunucusu** | Simetrik NAT arkasındaki kullanıcılar için |
+| 🎥 WebRTC Video/Ses | P2P bağlantı; sunucu yalnızca sinyalizasyon yapar |
+| 🌐 Anlık Çeviri | Türkçe konuşma → İngilizce sentezlenmiş ses (sabit ses, ses klonlama yok) |
+| 🖥️ Ekran Paylaşımı | Tüm ekran veya sekme |
+| 🕹️ Uzak Masaüstü Kontrolü | Karşı tarafın onayıyla fare/klavye kontrolü (indirilebilir Python ajan) |
+| 📁 Dosya Paylaşımı | En fazla **50 MB**, uzantı + MIME doğrulaması, **1 saat sonra otomatik silinir** |
+| 💬 Sohbet | Oda geçmişli (son 50 mesaj) |
+| 🔴 Toplantı Kaydı | Tarayıcıda yerel kayıt, WebM indirme |
+| 🔒 Token Tabanlı Erişim | Katılımcı başına 1 saatlik join token; `peer_id` sunucuda üretilir |
 
 ---
 
 ## 🏗️ Mimari
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                    KULLANICI TARAYICI               │
-│                                                     │
-│  Lobby → Token Al → WebSocket → WebRTC P2P         │
-│                                                     │
-│  [Mic] [Cam] [Ekran] [Kayıt] [Chat] [Dosya] [🌐]  │
-└───────────────────────┬─────────────────────────────┘
-                        │  WebSocket / HTTP
-                        ▼
-┌─────────────────────────────────────────────────────┐
-│           NexMeet Backend (FastAPI)                 │
-│           AWS EC2 c7i-flex.large                    │
-│           63.181.49.86                              │
-│                                                     │
-│  • WebSocket sinyalizasyon (offer/answer/ICE)       │
-│  • Join token yönetimi                              │
-│  • Dosya upload/download proxy                      │
-│  • TTS proxy (/api/tts/*)                           │
-│  • Uzak kontrol oturum yönetimi                     │
-│  • Nginx + SSL (nexmeet.powerbi.com.tr)             │
-└──────────────┬──────────────────────────────────────┘
-               │  HTTP (internal)
-               ▼
-┌─────────────────────────────────────────────────────┐
-│         KokoClone TTS Service (FastAPI)             │
-│         AWS EC2 g4dn.xlarge (NVIDIA T4 GPU)         │
-│         18.199.115.23:5000                          │
-│                                                     │
-│  Whisper STT → Google Translate → ChatterboxTTS    │
-│  (Türkçe ses)  (TR→EN metin)    (klonlanmış ses)   │
-└─────────────────────────────────────────────────────┘
+Tarayıcı (frontend/index.html + static/js/app.js)
+  │ 1) POST /api/join-token → token + sunucu üretimli peer_id
+  │ 2) WS /ws/{room}/{peer}   (sinyalizasyon, sohbet, durum)
+  │ 3) WebRTC P2P             (medya)
+  ▼
+nginx → FastAPI (backend/main.py, systemd: nexmeet, 127.0.0.1:8009)
+  ├─ /api/upload, /api/download, /api/room/{id}/files   → uploads/ (TTL 1 saat)
+  ├─ WS /ws/agent/{id}                ← uzak kontrol ajanı (kontrol edilen bilgisayar)
+  ├─ WS /ws/control/{oturum}/{peer}   ← kontrol eden tarayıcı
+  ├─ /api/control/request|respond|stop
+  └─ /api/tts/*  ──HTTP + x-api-key──►  nexmeet-tts (127.0.0.1:5000)
+                                         faster-whisper (STT) → çeviri → Kokoro ONNX (TTS), CPU
 ```
+
+Durum bellekte tutulur (odalar, kontrol oturumları, paylaşılan dosyalar); servis yeniden başladığında sıfırlanır. Ayrıntı: `architect.md`.
 
 ---
 
@@ -65,522 +47,121 @@ WebRTC tabanlı, **ses klonlamalı anlık çeviri**, **uzak masaüstü kontrolü
 ```
 nexmeet/
 ├── backend/
-│   ├── main.py              # FastAPI uygulaması — tüm endpoint'ler
-│   ├── requirements.txt     # Python bağımlılıkları
-│   ├── tts/
-│   │   ├── chunker.py       # TTS ses chunk yönetimi
-│   │   ├── engine.py        # TTS pipeline motor
-│   │   └── queue.py         # TTS kuyruk sistemi
-│   └── app.js               # Node.js yardımcı script
-├── frontend/
-│   ├── index.html           # Tek sayfa uygulama (SPA)
-│   └── static/
-│       ├── css/style.css    # Tüm stiller
-│       ├── js/app.js        # WebRTC + tüm UI mantığı
-│       └── agent/           # İndirilebilir uzak kontrol ajanı
-│           ├── agent.py
-│           ├── linux_agent.sh
-│           └── windows_agent.bat
-├── agent/                   # Geliştirici agent klasörü
-│   ├── agent.py             # Uzak kontrol ajanı (Python)
-│   ├── linux_agent.sh       # Linux başlatma scripti
-│   ├── windows_agent.bat    # Windows başlatma scripti
+│   ├── main.py              # FastAPI uygulaması — tüm uç noktalar
 │   └── requirements.txt
-├── docker/
-│   ├── Dockerfile           # Docker image
-│   ├── docker-compose.yml   # Docker Compose yapılandırması
-│   └── backend/             # Docker için backend kopyası
-├── scripts/
-│   ├── start.sh             # Linux/macOS başlatma scripti
-│   └── start.bat            # Windows başlatma scripti
-├── uploads/                 # Yüklenen dosyalar (git'e dahil değil)
-├── .env.example             # Ortam değişkenleri şablonu
-└── start.bat                # Kök dizin Windows başlatma
+├── frontend/
+│   ├── index.html           # Tek sayfa uygulama
+│   └── static/
+│       ├── css/style.css
+│       ├── js/app.js        # WebRTC + arayüz mantığı
+│       └── agent/           # Kullanıcıya indirilen ajan kopyası (agent/ ile aynı tutulur)
+├── agent/                   # Uzak kontrol ajanı kaynağı
+│   ├── agent.py
+│   ├── linux_agent.sh
+│   └── windows_agent.bat
+├── scripts/                 # start.sh / start.bat
+├── uploads/                 # Yüklenen dosyalar (geçici)
+└── .env.example
 ```
+
+> `backend/tts/`, `backend/app.js` ve `docker/` eski sürümlerden kalmadır, canlıda kullanılmaz.
 
 ---
 
 ## ⚙️ Ortam Değişkenleri
 
-`.env.example` dosyasını `.env` olarak kopyalayıp doldurun:
+`.env.example` dosyasını `.env` olarak kopyalayın:
 
-```bash
-cp .env.example .env
-```
-
-| Değişken | Açıklama | Örnek |
-|----------|----------|-------|
-| `SECRET_KEY` | JWT imzalama anahtarı (min 32 karakter) | `python3 -c "import secrets; print(secrets.token_hex(32))"` |
-| `ALLOWED_ORIGINS` | CORS için izin verilen origin'ler (virgülle ayrılmış) | `https://nexmeet.powerbi.com.tr` |
-| `MAX_FILE_SIZE_MB` | Maksimum dosya yükleme boyutu | `100` |
-| `UPLOADS_DIR` | Yüklenen dosyaların kaydedileceği klasör | `uploads` |
-| `HOST` | Sunucu dinleme adresi | `0.0.0.0` |
-| `PORT` | Sunucu portu | `8000` |
-| `TTS_SERVICE_URL` | KokoClone TTS servis adresi | `http://18.199.115.23:5000` |
-| `TTS_API_KEY` | TTS servisi ile paylaşılan gizli anahtar | `nexmeet-secret-key-123` |
-
-> ⚠️ `TTS_API_KEY` değeri, KokoClone TTS servisindeki `API_KEY` ile **birebir aynı** olmalıdır.
+| Değişken | Açıklama |
+|----------|----------|
+| `SECRET_KEY` | Gizli anahtar (≥ 32 karakter). Tanımsızsa her başlatmada rastgele üretilir ve token'lar geçersiz olur |
+| `ALLOWED_ORIGINS` | CORS için izinli origin'ler (virgülle ayrılmış) |
+| `MAX_FILE_SIZE_MB` | Yükleme sınırı (varsayılan 50; nginx `client_max_body_size` ile aynı olmalı) |
+| `UPLOADS_DIR` | Yüklenen dosyaların klasörü |
+| `HOST`, `PORT` | Dinleme adresi ve portu |
+| `TTS_SERVICE_URL` | TTS servisi adresi (boşsa çeviri uçları 503 döner) |
+| `TTS_API_KEY` | TTS servisindeki `API_KEY` ile aynı olmalı |
 
 ---
 
 ## 🚀 Kurulum
 
-### Yerel Geliştirme
-
-**Linux / macOS:**
 ```bash
-git clone https://github.com/SHapeloglu/nexmeet.git
-cd nexmeet
-cp .env.example .env
-# .env dosyasını düzenle
-
-bash scripts/start.sh
-# → http://localhost:8000
-```
-
-**Windows:**
-```bat
-git clone https://github.com/SHapeloglu/nexmeet.git
-cd nexmeet
-copy .env.example .env
-REM .env dosyasını düzenle
-
-scripts\start.bat
-REM → http://localhost:8000
-```
-
-**Manuel kurulum:**
-```bash
-python3 -m venv venv
-source venv/bin/activate          # Windows: venv\Scripts\activate
+git clone https://github.com/SHapeloglu/nexmeet_v3.git
+cd nexmeet_v3
+python3 -m venv venv && . venv/bin/activate
 pip install -r backend/requirements.txt
-
-cd backend
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+cp .env.example .env        # değerleri doldurun
+cd backend && uvicorn main:app --host 127.0.0.1 --port 8000
 ```
 
-### Docker ile Çalıştırma
-
-```bash
-cp .env.example .env
-# .env dosyasını düzenle
-
-cd docker
-docker-compose up -d
-
-# Logları izle
-docker-compose logs -f
-```
-
-### AWS EC2 (Production)
-
-**Gereksinimler:**
-- Ubuntu 24.04
-- Python 3.11+
-- Nginx
-- SSL sertifikası (Let's Encrypt)
-
-```bash
-# 1. Bağımlılıkları kur
-sudo apt update && sudo apt install -y python3.11 python3.11-venv nginx certbot
-
-# 2. Projeyi klonla
-cd /home/ubuntu
-git clone https://github.com/SHapeloglu/nexmeet.git
-cd nexmeet
-
-# 3. Sanal ortam oluştur
-python3.11 -m venv venv311
-source venv311/bin/activate
-pip install -r backend/requirements.txt
-
-# 4. .env dosyasını oluştur
-cp .env.example .env
-nano .env
-
-# 5. systemd servisini kur
-sudo cp nexmeet.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable nexmeet.service
-sudo systemctl start nexmeet.service
-```
-
-**systemd servis dosyası** (`/etc/systemd/system/nexmeet.service`):
-```ini
-[Unit]
-Description=NexMeet Backend
-After=network.target
-
-[Service]
-User=ubuntu
-WorkingDirectory=/home/ubuntu/nexmeet/backend
-EnvironmentFile=/home/ubuntu/nexmeet/.env
-Environment="PATH=/home/ubuntu/nexmeet/venv311/bin"
-ExecStart=/home/ubuntu/nexmeet/venv311/bin/uvicorn main:app --host 127.0.0.1 --port 8000
-Restart=always
-RestartSec=3
-
-[Install]
-WantedBy=multi-user.target
-```
+Üretimde uvicorn systemd ile (`WorkingDirectory=…/backend`, `EnvironmentFile=…/.env`) çalıştırılır; nginx TLS sonlandırır ve WebSocket yükseltmesini (`Upgrade`/`Connection`) iletir. Kamera ve mikrofon için HTTPS gerekir (`localhost` hariç).
 
 ---
 
-## 📡 API Referansı
+## 📡 API Özeti
 
-### HTTP Endpoints
+| Uç nokta | Açıklama |
+|----------|----------|
+| `POST /api/join-token` | `{name, room_id}` → `{token, peer_id}` (20/dk). `peer_id` istemciden alınmaz |
+| `GET /api/room/{id}/info` | Yalnızca katılımcı sayısı |
+| `POST /api/upload/{room_id}` | Dosya yükle (10/dk) |
+| `GET /api/download/{file_id}?token=` | Dosya indir (30/dk) |
+| `GET /api/room/{id}/files?token=` | Odadaki dosyalar |
+| `POST /api/tts/synthesize` | Metni çevir ve seslendir (30/dk) |
+| `POST /api/tts/voice-profile`, `GET …/status` | Ses profili (5/dk) |
+| `POST /api/control/request\|respond\|stop` | Uzak kontrol izin akışı (hepsi `token` ister) |
+| `WS /ws/{room_id}/{peer_id}?token=` | Oda sinyalizasyonu |
+| `WS /ws/agent/{agent_id}?session_id=&key=` | Ajan kanalı |
+| `WS /ws/control/{session_id}/{peer_id}?token=` | Kontrolcü kanalı |
 
-#### `GET /`
-Ana sayfa (Lobby).
-
-#### `GET /room/{room_id}`
-Oda sayfası (SPA yönlendirme).
-
-#### `GET /api/room/{room_id}/info`
-Oda bilgisi — mevcut katılımcı listesi.
-
-```json
-{
-  "room_id": "abc123",
-  "peer_count": 2,
-  "peers": [
-    {"id": "peer1", "name": "Ali"},
-    {"id": "peer2", "name": "Veli"}
-  ]
-}
-```
-
-#### `POST /api/join-token` ⚡ Rate: 20/dk
-Join token oluştur.
-
-```json
-// Request
-{"name": "Ali", "room_id": "abc123", "peer_id": "peer-xyz"}
-
-// Response
-{"token": "eyJhbGci..."}
-```
-
-#### `POST /api/upload/{room_id}` ⚡ Rate: 10/dk
-Dosya yükle (multipart/form-data).
-
-| Alan | Tip | Açıklama |
-|------|-----|----------|
-| `file` | File | Yüklenecek dosya |
-| `peer_id` | string | Yükleyenin peer ID'si |
-| `uploader_name` | string | Yükleyenin adı |
-| `token` | string | Join token |
-
-#### `GET /api/download/{file_id}?token=...`
-Dosya indir — token zorunlu.
-
-#### `GET /api/room/{room_id}/files?token=...`
-Odadaki dosyaları listele.
-
----
-
-### TTS Endpoints
-
-#### `POST /api/tts/synthesize` ⚡ Rate: 30/dk
-Ses kaydını KokoClone TTS servisine proxy'le.
-
-```json
-// Request
-{
-  "token": "join-token",
-  "audio_base64": "<WAV base64>",
-  "source_lang": "tr",
-  "target_lang": "en",
-  "session_id": "oturum-id"
-}
-
-// Response (KokoClone'dan)
-{
-  "audio_base64": "<üretilen WAV base64>",
-  "duration_ms": 4200
-}
-```
-
-#### `POST /api/tts/voice-profile` ⚡ Rate: 5/dk
-Kullanıcının ses profilini kaydet.
-
-#### `GET /api/tts/voice-profile/status?token=...`
-Kullanıcının ses profilinin var olup olmadığını kontrol et.
-
----
-
-### Uzak Kontrol Endpoints
-
-#### `POST /api/control/request`
-Uzak kontrol isteği başlat.
-
-#### `POST /api/control/respond`
-Uzak kontrol isteğini onayla/reddet.
-
-#### `POST /api/control/stop`
-Uzak kontrol oturumunu sonlandır.
-
----
-
-### WebSocket Endpoints
-
-#### `WS /ws/{room_id}/{peer_id}?token=...`
-Ana oda sinyalizasyon kanalı.
-
-**Gönderilen mesaj tipleri:**
-
-| Tip | Açıklama |
-|-----|----------|
-| `offer` | WebRTC SDP offer |
-| `answer` | WebRTC SDP answer |
-| `ice-candidate` | ICE adayı |
-| `chat` | Sohbet mesajı |
-| `media-state` | Mikrofon/kamera durumu |
-| `screen-share-started` | Ekran paylaşımı başladı |
-| `screen-share-stopped` | Ekran paylaşımı durdu |
-| `recording-started` | Kayıt başladı |
-| `recording-stopped` | Kayıt durdu |
-| `tts-audio` | TTS ile çevrilmiş ses |
-| `file-chunk` | P2P dosya aktarımı |
-| `control-request` | Uzak kontrol talebi |
-| `control-response` | Uzak kontrol yanıtı |
-
-**Alınan sunucu mesajları:**
-
-| Tip | Açıklama |
-|-----|----------|
-| `room-joined` | Odaya katılındı (peer listesi + chat geçmişi) |
-| `peer-joined` | Yeni katılımcı geldi |
-| `peer-left` | Katılımcı ayrıldı |
-
-#### `WS /ws/agent/{agent_id}?token=...&session_id=...`
-Uzak kontrol ajanı kanalı (kontrol edilmek isteyen bilgisayar).
-
-#### `WS /ws/control/{session_id}/{controller_peer_id}?token=...`
-Kontrolcü kanalı (kontrol eden taraf).
-
----
-
-## 🌐 Anlık Ses Çevirisi (TTS)
-
-### Nasıl Çalışır?
-
-```
-Kullanıcı 🎤 konuşur (TR)
-      │
-      ▼ (3 saniyelik chunk'lar)
- MediaRecorder API (WAV)
-      │
-      ▼
-POST /api/tts/synthesize
-      │
-      ▼
- KokoClone TTS Service:
- 1. Whisper STT  → "Merhaba nasılsın"
- 2. Google Translate → "Hello how are you"
- 3. ChatterboxTTS → 🔊 (konuşmacının sesiyle)
-      │
-      ▼
- WebSocket tts-audio mesajı
-      │
-      ▼
- Odadaki herkes duyar 🔊
-```
-
-### Ses Profili Kaydı
-
-Ses klonlama için kullanıcının önce ses profili kaydetmesi gerekir:
-
-1. 🌐 butonuna tıkla
-2. "Ses Profili Kaydet" → 5 saniye konuş
-3. Profil kaydedilince çeviri otomatik başlar
-
-Profil yoksa Chatterbox'ın varsayılan sesi kullanılır.
-
-### Gecikme
-
-| Adım | Süre |
-|------|------|
-| Whisper STT (GPU) | ~1-2 sn |
-| Google Translate | ~0.5 sn |
-| ChatterboxTTS (GPU) | ~2-3 sn |
-| **Toplam** | **~4-6 sn** |
+TTS uçları, TTS servisi hata verirse veya yanıt vermezse `502/504` döner; yapılandırılmamışsa `503`.
 
 ---
 
 ## 🕹️ Uzak Masaüstü Kontrolü
 
-### Kurulum (Kontrol Edilecek Bilgisayar)
+1. **A**, **B**'ye kontrol isteği gönderir.
+2. **B** isteği onaylar. Arayüzde **oturum kodu** ve **ajan anahtarı** gösterilir.
+3. **B**, bilgisayarında ajanı başlatır ve bu iki değeri girer:
+   - Windows: `windows_agent.bat` · Linux: `linux_agent.sh` (arayüzdeki ajan penceresinden indirilir)
+   - ya da: `python agent.py --server wss://<sunucu> --session <oturum> --key <anahtar> --nogui`
+4. **A**, B'nin ekranını canlı görür ve fare/klavye ile kontrol eder; her iki taraf da oturumu durdurabilir. Ajan çalışırken fareyi sol üst köşeye götürmek de durdurur (FailSafe).
 
-```bash
-# Agent bağımlılıkları
-pip install pyautogui mss websockets pillow
+Ajan gereksinimleri: `pyautogui`, `mss`, `websockets`, `pillow` (Linux'ta ayrıca `python3-xlib`, `python3-tk`, `scrot`).
 
-# Çalıştır
-python agent/agent.py --server wss://nexmeet.powerbi.com.tr --session OTURUM_ID
-```
-
-veya indirilebilir scriptler:
-- **Windows:** `windows_agent.bat`
-- **Linux:** `linux_agent.sh`
-
-### Akış
-
-1. **A** kullanıcısı → B'ye "Kontrolü Al" isteği gönderir
-2. **B** kullanıcısı → İsteği onaylar (veya reddeder)
-3. **A** → B'nin ekranını canlı görür, fare/klavye ile kontrol eder
-4. Kontrol sonlandırmak için "Kontrolü Durdur"
-
-### Güvenlik
-
-- Yalnızca onaylı oturumlar aktif
-- İzin verilen komutlar: `mouse-move`, `mouse-click`, `mouse-scroll`, `key-press`, `key-type`, `stop-control`
-- Her iki taraf da oturumu sonlandırabilir
+**Güvenlik:** Ajan anahtarı her oturum için sunucuda üretilir, yalnızca kontrol edilecek tarafa iletilir ve **tek kullanımlıktır**; ajan, hedef onaylamadan bağlanamaz. İzin verilen komutlar: `mouse-move`, `mouse-click`, `mouse-scroll`, `mouse-down`, `mouse-up`, `key-press`, `key-type`, `stop-control`.
 
 ---
 
 ## 🔒 Güvenlik
 
-### Token Sistemi
-- Her katılımcı `/api/join-token` ile benzersiz token alır
-- Tokenlar 1 saat geçerli, sonra otomatik silinir
-- Tüm korumalı endpoint'ler token doğrulaması gerektirir
-
-### Dosya Güvenliği
-
-**Yasaklı uzantılar:**
-`.exe`, `.bat`, `.cmd`, `.sh`, `.ps1`, `.msi`, `.dll`, `.so`, `.jar`, `.py`, `.php` ve diğer çalıştırılabilir dosyalar
-
-**İzin verilen MIME tipleri:**
-PDF, Word, Excel, PowerPoint, görseller (JPG/PNG/GIF/WebP), ses/video, ZIP
-
-### Rate Limiting
-
-| Endpoint | Limit |
-|----------|-------|
-| `/api/join-token` | 20/dakika |
-| `/api/upload/*` | 10/dakika |
-| `/api/download/*` | 30/dakika |
-| `/api/tts/synthesize` | 30/dakika |
-| `/api/tts/voice-profile` | 5/dakika |
-
-### CORS
-Production'da `ALLOWED_ORIGINS` ile yalnızca belirlenen domain'lere izin verilir.
+- **Token:** `/api/join-token` ile alınır, 1 saat geçerlidir; korumalı uçların hepsi doğrular. Süresi dolan token'lar ve eski kontrol oturumları temizlenir.
+- **Kimlik:** `peer_id` sunucuda üretilir; başkası aynı kimlikle bağlanamaz. Odalarda sahip/şifre yoktur: oda kodunu bilen katılabilir.
+- **Dosyalar:** yasaklı uzantılar (`.exe .bat .cmd .sh .ps1 .msi .dll .so .dylib .bin .com .scr .vbs .js .jar .py .php .rb`), izinli MIME listesi, 1 saat sonra silme; servis açılırken 1 saatten eski dosyalar da silinir.
+- **Hız sınırı:** `slowapi` ile uç noktalara göre (yukarıdaki tablo).
+- **CORS:** üretimde `ALLOWED_ORIGINS` ile kısıtlanır.
 
 ---
 
 ## 🔧 Sorun Giderme
 
-### Kamera/Mikrofon açılmıyor
-Tarayıcı kamera iznine HTTPS üzerinden erişebilir. Yerel geliştirmede `http://localhost:8000` çalışır; dış IP ile açarken HTTPS gereklidir.
-
-### WebSocket bağlantısı kurulamıyor
 ```bash
-# Nginx'in WebSocket proxy ayarları kontrol et
-sudo nginx -t
-sudo systemctl status nginx
-
-# Backend çalışıyor mu?
-sudo systemctl status nexmeet.service
+sudo systemctl status nexmeet          # servis durumu
+sudo journalctl -u nexmeet -n 100 --no-pager
+curl -s http://127.0.0.1:5000/health   # TTS servisi (varsa)
 ```
 
-### TTS çalışmıyor (503)
-```bash
-# .env dosyasında TTS_SERVICE_URL tanımlı mı?
-grep TTS /home/ubuntu/nexmeet/.env
-
-# TTS servisi erişilebilir mi?
-curl http://18.199.115.23:5000/health
-```
-
-### TTS "Geçersiz API key" hatası
-```bash
-# Backend'deki key
-grep TTS_API_KEY /home/ubuntu/nexmeet/.env
-
-# TTS servisindeki key
-sudo cat /proc/$(systemctl show -p MainPID kokoro-tts.service | cut -d= -f2)/environ | tr '\0' '\n' | grep API_KEY
-# İkisi aynı olmalı!
-```
-
-### Servis logları
-```bash
-sudo journalctl -u nexmeet.service -f
-sudo journalctl -u nexmeet.service -n 100 --no-pager
-```
+- **Çeviri çalışmıyor (503/502):** `TTS_SERVICE_URL` tanımlı mı, TTS servisi ayakta mı, `TTS_API_KEY` iki tarafta aynı mı?
+- **WebSocket kurulamıyor:** nginx'te WebSocket yükseltme başlıkları ve `proxy_read_timeout` kontrol edin.
+- **Ajan bağlanamıyor (403):** oturum onaylanmamış, anahtar yanlış ya da anahtar zaten kullanılmış olabilir; yeni bir kontrol isteği başlatın.
+- **Dosya 413 hatası:** nginx `client_max_body_size` uygulama sınırından (50 MB) küçük olmasın.
 
 ---
 
-## 🖥️ Servis Yönetimi (AWS)
+## 🗂️ İlgili
 
-```bash
-# Başlat
-sudo systemctl start nexmeet.service
-
-# Durdur
-sudo systemctl stop nexmeet.service
-
-# Yeniden başlat
-sudo systemctl restart nexmeet.service
-
-# Durumu kontrol et
-sudo systemctl status nexmeet.service
-
-# Logları izle
-sudo journalctl -u nexmeet.service -f
-
-# Nginx yeniden yükle
-sudo nginx -s reload
-```
-
----
-
-## 📦 Bağımlılıklar
-
-```
-fastapi==0.115.0
-uvicorn[standard]==0.30.6
-websockets==13.1
-python-multipart==0.0.12
-aiofiles==24.1.0
-slowapi          # Rate limiting
-httpx            # TTS proxy HTTP client
-python-dotenv
-```
-
-**Uzak Kontrol Ajanı:**
-```
-pyautogui        # Fare/klavye kontrolü
-mss              # Ekran yakalama
-websockets       # WS bağlantısı
-pillow           # Görüntü işleme
-```
-
----
-
-## 🗂️ İlgili Repolar
-
-| Repo | Açıklama |
-|------|----------|
-| [nexmeet](https://github.com/SHapeloglu/nexmeet) | Bu repo — Backend + Frontend |
-| [nexmeet-kokoro-tts-service](https://github.com/SHapeloglu/nexmeet-kokoro-tts-service) | KokoClone TTS servisi |
-
----
-
-## 📋 Altyapı
-
-| Bileşen | Detay |
-|---------|-------|
-| Backend sunucusu | AWS EC2 c7i-flex.large |
-| Backend IP | 63.181.49.86 (Elastic IP) |
-| TTS sunucusu | AWS EC2 g4dn.xlarge |
-| TTS IP | 18.199.115.23 (Elastic IP) |
-| Domain | nexmeet.powerbi.com.tr |
-| SSL | Let's Encrypt / Nginx |
-| TURN | coturn (aynı backend sunucusu, port 3478) |
-| GPU | NVIDIA T4, CUDA, PyTorch 2.6.0 |
-
----
+TTS servisi ayrı bir projedir (`nexmeet-tts`): faster-whisper tiny + yerel çeviri + Kokoro ONNX, yalnızca CPU.
 
 ## 🏷️ Lisans
 

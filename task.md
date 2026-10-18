@@ -9,7 +9,7 @@
 - [x] 2026-10-18 ✅ ~~peer_id taklidi~~ — `/api/join-token` peer_id'yi sunucuda üretir; `/api/room/{id}/info` yalnız sayı döner. (Oda sahibi/şifresi hâlâ yok: odayı bilen katılabilir.)
 - [x] 2026-10-18 ✅ ~~Dosya sınırı~~ — `MAX_FILE_SIZE_MB` 50'ye çekildi (kod varsayılanı, `.env.example`, canlı `.env`).
 - [x] 2026-10-18 ✅ ~~Yetim dosyalar~~ — başlangıçta 1 saatten eski `uploads/` dosyaları silinir. ⚠ Repoda izlenen 2 eski kullanıcı dosyası (Haziran) ilk başlatmada silinecek (git'ten geri alınabilir).
-- [ ] 🟡 WS genel hata yolunda `peer-left` yayınla; `control_sessions`/`join_tokens` için periyodik temizlik; `control_endpoint`'te token peer_id = kontrolcü kontrolü.
+- [x] 2026-10-18 ✅ ~~Küçükler~~ — WS genel hata yolunda `peer-left` yayınlanır; eski kontrol oturumları ve token'lar `cleanup_expired_tokens` ile temizlenir (`created_at`, 1 saat); `control_endpoint` token peer_id'sini kontrolcüyle karşılaştırır.
 
 - [ ] **README güncel değil** — 2026-07-20 değişiklikleri yok: agent token doğrulaması, yüklenen dosyaların otomatik silinmesi (`FILE_TTL_SECONDS`, `auto_delete_file`) ve TTS metin desteği README'de anlatılmıyor. (`/root/ISLISTESI.md` Aktif #17)
 - [ ] Public repodan izlenen kullanıcı dosyalarını çıkar: `git rm --cached uploads/*` (içerik kontrolü + kullanıcı onayı; geçmiş temizliği ayrıca)

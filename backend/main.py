@@ -29,7 +29,7 @@ load_dotenv()
 SECRET_KEY    = os.getenv("SECRET_KEY", secrets.token_hex(32))
 RAW_ORIGINS   = os.getenv("ALLOWED_ORIGINS", "http://localhost:8000")
 ALLOWED_ORIGINS = [o.strip() for o in RAW_ORIGINS.split(",") if o.strip()]
-MAX_FILE_SIZE = int(os.getenv("MAX_FILE_SIZE_MB", "100")) * 1024 * 1024
+MAX_FILE_SIZE = int(os.getenv("MAX_FILE_SIZE_MB", "50")) * 1024 * 1024
 
 # İzin verilen MIME tipleri (executable türler yasaklı)
 ALLOWED_MIME_TYPES = {
@@ -91,6 +91,21 @@ BASE_DIR     = Path(__file__).parent.parent
 FRONTEND_DIR = BASE_DIR / "frontend"
 UPLOADS_DIR  = BASE_DIR / os.getenv("UPLOADS_DIR", "uploads")
 UPLOADS_DIR.mkdir(exist_ok=True)
+
+
+def temizle_eski_yuklemeler():
+    """Başlangıçta FILE_TTL_SECONDS'tan eski dosyaları sil (yeniden başlatmada yetim kalanlar)."""
+    sinir = time.time() - FILE_TTL_SECONDS
+    for f in UPLOADS_DIR.iterdir():
+        try:
+            if f.is_file() and f.name != ".gitkeep" and f.stat().st_mtime < sinir:
+                f.unlink()
+                logger.info(f"Yetim dosya silindi: {f.name}")
+        except Exception as e:
+            logger.error(f"Yetim dosya silinemedi ({f.name}): {e}")
+
+
+temizle_eski_yuklemeler()
 
 # ─── In-memory state ─────────────────────────────────────────────────────────
 shared_files:    Dict[str, dict] = {}
@@ -222,8 +237,8 @@ async def get_room(room_id: str):
 
 @app.get("/api/room/{room_id}/info")
 async def room_info(room_id: str):
-    peers = manager.get_room_peers(room_id)
-    return {"room_id": room_id, "peer_count": len(peers), "peers": peers}
+    # Katılımcı adları/kimlikleri tokensiz verilmez; yalnız sayı döner.
+    return {"room_id": room_id, "peer_count": len(manager.get_room_peers(room_id))}
 
 
 @app.post("/api/join-token")
@@ -235,14 +250,16 @@ async def create_join_token(request: Request, data: dict):
     """
     name    = str(data.get("name", "")).strip()[:50]
     room_id = str(data.get("room_id", "")).strip()[:20]
-    peer_id = str(data.get("peer_id", "")).strip()[:30]
 
-    if not name or not room_id or not peer_id:
-        raise HTTPException(status_code=400, detail="name, room_id ve peer_id zorunlu.")
+    if not name or not room_id:
+        raise HTTPException(status_code=400, detail="name ve room_id zorunlu.")
+
+    # peer_id istemciden alınmaz: sunucu üretir, başkası aynı kimliği isteyemez.
+    peer_id = secrets.token_urlsafe(9)
 
     cleanup_expired_tokens()
     token = generate_join_token(room_id, peer_id, name)
-    return {"token": token}
+    return {"token": token, "peer_id": peer_id}
 
 
 @app.post("/api/upload/{room_id}")
@@ -732,6 +749,29 @@ import httpx
 TTS_SERVICE_URL = os.getenv("TTS_SERVICE_URL", "")
 TTS_API_KEY = os.getenv("TTS_API_KEY", "")
 
+async def _tts_istek(method: str, path: str, timeout: float, **kwargs):
+    """TTS servisine istek at; hata/bozuk yanıtta anlamlı HTTP hatası dön."""
+    if not TTS_SERVICE_URL:
+        raise HTTPException(status_code=503, detail="TTS servisi yapılandırılmamış.")
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.request(
+                method, f"{TTS_SERVICE_URL}{path}",
+                headers={"x-api-key": TTS_API_KEY}, **kwargs,
+            )
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="TTS servisi zaman aşımına uğradı.")
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="TTS servisine ulaşılamadı.")
+    if response.status_code >= 400:
+        logger.error(f"TTS {path} -> {response.status_code}: {response.text[:200]}")
+        raise HTTPException(status_code=502, detail=f"TTS servisi hata verdi ({response.status_code}).")
+    try:
+        return response.json()
+    except ValueError:
+        raise HTTPException(status_code=502, detail="TTS servisi geçersiz yanıt döndü.")
+
+
 @app.post("/api/tts/synthesize")
 @limiter.limit("30/minute")
 async def tts_synthesize(request: Request, data: dict):
@@ -739,22 +779,14 @@ async def tts_synthesize(request: Request, data: dict):
     entry = validate_join_token(token)
     if not entry:
         raise HTTPException(status_code=401, detail="Geçersiz token.")
-    if not TTS_SERVICE_URL:
-        raise HTTPException(status_code=503, detail="TTS servisi yapılandırılmamış.")
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.post(
-            f"{TTS_SERVICE_URL}/synthesize",
-            json={
-                "audio_base64": data.get("audio_base64", ""),
-                "text": data.get("text", ""),
-                "peer_id": entry["peer_id"],
-                "source_lang": data.get("source_lang", "tr"),
-                "target_lang": data.get("target_lang", "en"),
-                "session_id": data.get("session_id"),
-            },
-            headers={"x-api-key": TTS_API_KEY},
-        )
-        return response.json()
+    return await _tts_istek("POST", "/synthesize", 30.0, json={
+        "audio_base64": data.get("audio_base64", ""),
+        "text": data.get("text", ""),
+        "peer_id": entry["peer_id"],
+        "source_lang": data.get("source_lang", "tr"),
+        "target_lang": data.get("target_lang", "en"),
+        "session_id": data.get("session_id"),
+    })
 
 @app.post("/api/tts/voice-profile")
 @limiter.limit("5/minute")
@@ -763,29 +795,18 @@ async def tts_voice_profile(request: Request, data: dict):
     entry = validate_join_token(token)
     if not entry:
         raise HTTPException(status_code=401, detail="Geçersiz token.")
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        response = await client.post(
-            f"{TTS_SERVICE_URL}/voice-profile",
-            json={
-                "audio_base64": data.get("audio_base64", ""),
-                "text": data.get("text", ""),
-                "peer_id": entry["peer_id"],
-            },
-            headers={"x-api-key": TTS_API_KEY},
-        )
-        return response.json()
+    return await _tts_istek("POST", "/voice-profile", 60.0, json={
+        "audio_base64": data.get("audio_base64", ""),
+        "text": data.get("text", ""),
+        "peer_id": entry["peer_id"],
+    })
 
 @app.get("/api/tts/voice-profile/status")
 async def tts_voice_profile_status(request: Request, token: str):
     entry = validate_join_token(token)
     if not entry:
         raise HTTPException(status_code=401, detail="Geçersiz token.")
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        response = await client.get(
-            f"{TTS_SERVICE_URL}/voice-profile/{entry['peer_id']}",
-            headers={"x-api-key": TTS_API_KEY},
-        )
-        return response.json()
+    return await _tts_istek("GET", f"/voice-profile/{entry['peer_id']}", 10.0)
 
 app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR / "static")), name="static")
 app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")

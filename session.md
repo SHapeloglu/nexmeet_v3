@@ -26,3 +26,8 @@
 **Açık sorunlar:** ...
 **Sıradaki adım:** ...
 ```
+
+## 2026-10-16 — Hata incelemesi (kod okuma + canlı deneme)
+
+- Uzak kontrol: indirilen ajan `/ws/agent`'a parametresiz bağlanıyor → 403 (canlıda denendi). Çeviri: Google IP'yi captcha'ya düşürmüş, `TooManyRequests`; backend TTS hatasında `response.json()` ile 500. `/api/control/stop` ön yüzden tokensiz → 401. peer_id taklidi mümkün. nginx 50M ↔ uygulama 100 MB. Ayrıntı `task.md` ve `/root/topluisler.md` #64. Kod değiştirilmedi.
+- AutoSleep 20 dk'ya indirildi; toplantı sürerken açık WebSocket olduğu için uyutmuyor (kontrol edildi).

@@ -3,3 +3,6 @@ uvicorn[standard]==0.30.6
 websockets==13.1
 python-multipart==0.0.12
 aiofiles==24.1.0
+slowapi==0.1.10
+httpx==0.28.1
+python-dotenv==1.2.2

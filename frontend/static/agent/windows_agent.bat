@@ -40,6 +40,14 @@ if "%SESSION%"=="" (
     exit /b 1
 )
 
+:: Ajan anahtari
+set /p KEY="  Ajan anahtari (NexMeet'ten kopyala): "
+if "%KEY%"=="" (
+    echo  HATA: Ajan anahtari bos olamaz!
+    pause
+    exit /b 1
+)
+
 :: Ekran secimi
 echo.
 echo  Hangi ekrani paylasmak istiyorsunuz?
@@ -55,7 +63,7 @@ echo.
 
 :: agent.py bu bat dosyasiyla ayni klasorde olmali
 cd /d "%~dp0"
-python agent.py --server %SERVER% --session %SESSION% --monitor %MONITOR% --nogui
+python agent.py --server %SERVER% --session %SESSION% --key %KEY% --monitor %MONITOR% --nogui
 
 echo.
 echo  Ajan durduruldu.

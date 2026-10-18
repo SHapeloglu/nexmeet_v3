@@ -82,6 +82,11 @@ read -p " 🌐 Sunucu adresi (örn: ws://192.168.1.75:8000): " SERVER
 SERVER=${SERVER:-ws://localhost:8000}
 
 read -p " 🔑 Oturum kodu (NexMeet'ten kopyala): " SESSION
+read -p " 🔐 Ajan anahtarı (NexMeet'ten kopyala): " KEY
+if [ -z "$KEY" ]; then
+    echo " ❌ Ajan anahtarı boş olamaz!"
+    exit 1
+fi
 if [ -z "$SESSION" ]; then
     echo " ❌ Oturum kodu boş olamaz!"
     exit 1
@@ -111,7 +116,7 @@ echo ""
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-python3 agent.py --server "$SERVER" --session "$SESSION" --monitor "$MONITOR" --nogui
+python3 agent.py --server "$SERVER" --session "$SESSION" --key "$KEY" --monitor "$MONITOR" --nogui
 
 echo ""
 echo " Ajan durduruldu."

@@ -123,7 +123,6 @@ async function joinMeeting() {
 
   state.userName = nameInput;
   state.roomId = roomInput || generateId(8);
-  state.peerId = generateId(12);
 
   // Ensure we have a stream
   if (!state.localStream) {
@@ -149,11 +148,12 @@ async function joinMeeting() {
     const res = await fetch('/api/join-token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: state.userName, room_id: state.roomId, peer_id: state.peerId }),
+      body: JSON.stringify({ name: state.userName, room_id: state.roomId }),
     });
     if (!res.ok) throw new Error('Token alınamadı');
     const tokenData = await res.json();
     state.joinToken = tokenData.token;
+    state.peerId = tokenData.peer_id;
   } catch (e) {
     showToast('Sunucuya bağlanılamadı. Lütfen tekrar deneyin.');
     console.error('Token fetch error:', e);
@@ -1545,6 +1545,7 @@ async function uploadVoiceProfile(blob) {
       }),
     });
 
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if (data.success) {
       state.hasVoiceProfile = true;
@@ -1642,6 +1643,7 @@ async function processTTSText(text) {
         session_id: state.roomId,
       }),
     });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if (data.audio_base64) {
       playTTSAudio(data.audio_base64);
@@ -1653,6 +1655,11 @@ async function processTTSText(text) {
     }
   } catch (e) {
     console.error('TTS text error:', e);
+    const simdi = Date.now();
+    if (simdi - (state.ttsSonHataToast || 0) > 10000) {  // toast'ı tekrar tekrar basma
+      state.ttsSonHataToast = simdi;
+      showToast('Çeviri servisi şu an yanıt vermiyor.');
+    }
   } finally {
     state.ttsProcessing = false;
   }

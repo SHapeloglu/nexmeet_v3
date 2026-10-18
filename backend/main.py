@@ -146,6 +146,10 @@ def cleanup_expired_tokens():
     expired = [t for t, v in join_tokens.items() if now > v["expires_at"]]
     for t in expired:
         del join_tokens[t]
+    # Token ömrünü (1 saat) aşan kontrol oturumları da düşer
+    eski = [sid for sid, v in control_sessions.items() if now - v.get("created_at", now) > 3600]
+    for sid in eski:
+        del control_sessions[sid]
 
 
 def validate_file(filename: str, content_type: str, content: bytes) -> str:
@@ -539,6 +543,7 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, peer_id: str):
                     "agent_ws":           None,
                     "agent_id":           None,
                     "agent_key":          secrets.token_urlsafe(16),
+                    "created_at":         time.time(),
                 }
                 await manager.send_to_peer(room_id, target_peer, {
                     "type":               "control-request",
@@ -574,6 +579,11 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, peer_id: str):
     except Exception as e:
         logger.error(f"WebSocket error for peer {peer_id}: {e}")
         manager.disconnect(room_id, peer_id)
+        await manager.broadcast_to_room(room_id, {
+            "type":    "peer-left",
+            "peer_id": peer_id,
+            "name":    name,
+        })
 
 
 # ─── WebSocket: Controller ────────────────────────────────────────────────────
@@ -593,7 +603,8 @@ async def control_endpoint(websocket: WebSocket, session_id: str, controller_pee
         return
 
     entry = validate_join_token(token)
-    if not entry or entry["room_id"] != session["room_id"]:
+    if (not entry or entry["room_id"] != session["room_id"]
+            or entry["peer_id"] != controller_peer_id):
         await websocket.close(code=4001, reason="Geçersiz token")
         return
 
@@ -673,6 +684,7 @@ async def request_control(request: Request, data: dict):
         "agent_ws":           None,
         "agent_id":           None,
         "agent_key":          secrets.token_urlsafe(16),
+        "created_at":         time.time(),
     }
 
     sent = False

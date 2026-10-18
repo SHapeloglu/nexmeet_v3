@@ -161,10 +161,10 @@ def handle_command(data: dict, frame_w: int, frame_h: int):
 
 
 # ─── WebSocket Ana Döngü ─────────────────────────────────────────────────────
-async def run_agent(server_url: str, session_id: str, monitor_num: int = 1):
+async def run_agent(server_url: str, session_id: str, key: str = "", monitor_num: int = 1):
     global running, session_active, ws_connection
 
-    agent_ws_url = server_url.rstrip("/") + f"/ws/agent/{AGENT_ID}"
+    agent_ws_url = server_url.rstrip("/") + f"/ws/agent/{AGENT_ID}?key={key}&session_id={session_id}"
     logger.info(f"Sunucuya bağlanılıyor: {agent_ws_url}")
 
     frame_w, frame_h = FRAME_WIDTH, 720  # Başlangıç tahmini
@@ -300,6 +300,7 @@ def run_gui():
 
     server_entry = labeled_entry(form, "Sunucu Adresi", "ws://localhost:8000")
     session_entry = labeled_entry(form, "Oturum Kodu (NexMeet'ten kopyala)")
+    key_entry = labeled_entry(form, "Ajan Anahtarı (NexMeet'ten kopyala)")
 
     # Monitor seçimi
     mon_count = get_monitor_count()
@@ -333,10 +334,11 @@ def run_gui():
     def on_connect():
         server = server_entry.get().strip()
         session = session_entry.get().strip()
+        key = key_entry.get().strip()
         monitor = int(mon_var.get())
 
-        if not server or not session:
-            messagebox.showerror("Hata", "Sunucu adresi ve oturum kodu gerekli!")
+        if not server or not session or not key:
+            messagebox.showerror("Hata", "Sunucu adresi, oturum kodu ve ajan anahtarı gerekli!")
             return
 
         status_var.set("🔄 Bağlanılıyor...")
@@ -344,7 +346,7 @@ def run_gui():
 
         def run():
             try:
-                asyncio.run(run_agent(server, session, monitor))
+                asyncio.run(run_agent(server, session, key, monitor))
             except Exception as e:
                 pass
             root.after(0, lambda: [
@@ -366,12 +368,13 @@ def run_cli_interactive():
     print("="*50)
     server = input("Sunucu adresi (örn: ws://192.168.1.10:8000): ").strip()
     session = input("Oturum kodu: ").strip()
+    key = input("Ajan anahtarı (NexMeet'ten kopyala): ").strip()
     mon_count = get_monitor_count()
     if mon_count > 1:
         mon = int(input(f"Ekran numarası (1-{mon_count}): ").strip() or "1")
     else:
         mon = 1
-    asyncio.run(run_agent(server, session, mon))
+    asyncio.run(run_agent(server, session, key, mon))
 
 
 # ─── Ana Giriş ───────────────────────────────────────────────────────────────
@@ -379,6 +382,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="NexMeet Uzak Kontrol Ajanı")
     parser.add_argument("--server", help="WebSocket sunucu adresi (ws://host:8000)")
     parser.add_argument("--session", help="Oturum ID")
+    parser.add_argument("--key", help="Ajan anahtarı", default="")
     parser.add_argument("--monitor", type=int, default=1, help="Ekran numarası (varsayılan: 1)")
     parser.add_argument("--nogui", action="store_true", help="GUI olmadan çalıştır")
     args = parser.parse_args()
@@ -386,7 +390,7 @@ if __name__ == "__main__":
     if args.server and args.session:
         # Doğrudan parametrelerle çalıştır
         logger.info(f"Ekran {args.monitor} paylaşılıyor...")
-        asyncio.run(run_agent(args.server, args.session, args.monitor))
+        asyncio.run(run_agent(args.server, args.session, args.key, args.monitor))
     elif args.nogui:
         run_cli_interactive()
     else:

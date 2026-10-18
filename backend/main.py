@@ -342,6 +342,73 @@ async def room_files(room_id: str, token: str):
 
 # ─── WebSocket: Oda sinyalizasyonu ───────────────────────────────────────────
 
+# ─── WebSocket: Agent ─────────────────────────────────────────────────────────
+
+@app.websocket("/ws/agent/{agent_id}")
+async def agent_endpoint(websocket: WebSocket, agent_id: str):
+    key        = websocket.query_params.get("key", "")
+    session_id = websocket.query_params.get("session_id", "")
+    session    = control_sessions.get(session_id)
+
+    # Agent doğrulama: oturum gerçek, hedef onaylamış ve tek kullanımlık ajan anahtarı doğru mu?
+    if not session or not session.get("approved"):
+        await websocket.close(code=4001, reason="Geçersiz veya onaylanmamış oturum")
+        return
+
+    expected = session.get("agent_key")
+    if not expected or not key or not secrets.compare_digest(key, expected):
+        await websocket.close(code=4001, reason="Geçersiz ajan anahtarı")
+        return
+    session["agent_key"] = None  # tek kullanımlık
+
+    await websocket.accept()
+    agent_connections[agent_id] = websocket
+    logger.info(f"Agent connected: {agent_id}")
+
+    try:
+        while True:
+            data     = await websocket.receive_json()
+            msg_type = data.get("type")
+            sess_id  = data.get("session_id")
+
+            if msg_type == "frame":
+                sess = control_sessions.get(sess_id)
+                if sess and sess.get("approved") and sess.get("controller_ws"):
+                    try:
+                        await sess["controller_ws"].send_json({
+                            "type":       "remote-frame",
+                            "session_id": sess_id,
+                            "frame":      data.get("frame"),
+                            "width":      data.get("width"),
+                            "height":     data.get("height"),
+                        })
+                    except Exception:
+                        pass
+
+            elif msg_type == "agent-ready":
+                sess = control_sessions.get(sess_id)
+                if sess:
+                    sess["agent_ws"] = websocket
+                    sess["agent_id"] = agent_id
+
+    except WebSocketDisconnect:
+        agent_connections.pop(agent_id, None)
+        for sid, sess in list(control_sessions.items()):
+            if sess.get("agent_id") == agent_id:
+                ctrl_ws = sess.get("controller_ws")
+                if ctrl_ws:
+                    try:
+                        await ctrl_ws.send_json({"type": "remote-disconnected", "session_id": sid})
+                    except Exception:
+                        pass
+                del control_sessions[sid]
+        logger.info(f"Agent disconnected: {agent_id}")
+    except Exception as e:
+        logger.error(f"Agent error {agent_id}: {e}")
+        agent_connections.pop(agent_id, None)
+
+
+# Not: /ws/agent/{id}, /ws/{room_id}/{peer_id} rotasından ÖNCE tanımlı olmalı; yoksa onun tarafından yutulur.
 @app.websocket("/ws/{room_id}/{peer_id}")
 async def websocket_endpoint(websocket: WebSocket, room_id: str, peer_id: str):
     token = websocket.query_params.get("token", "")
@@ -454,10 +521,12 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, peer_id: str):
                     "controller_ws":      None,
                     "agent_ws":           None,
                     "agent_id":           None,
+                    "agent_key":          secrets.token_urlsafe(16),
                 }
                 await manager.send_to_peer(room_id, target_peer, {
                     "type":               "control-request",
                     "session_id":         session_id,
+                    "agent_key":          control_sessions[session_id]["agent_key"],
                     "controller_peer_id": peer_id,
                     "controller_name":    name,
                 })
@@ -488,71 +557,6 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, peer_id: str):
     except Exception as e:
         logger.error(f"WebSocket error for peer {peer_id}: {e}")
         manager.disconnect(room_id, peer_id)
-
-
-# ─── WebSocket: Agent ─────────────────────────────────────────────────────────
-
-@app.websocket("/ws/agent/{agent_id}")
-async def agent_endpoint(websocket: WebSocket, agent_id: str):
-    token      = websocket.query_params.get("token", "")
-    session_id = websocket.query_params.get("session_id", "")
-    session    = control_sessions.get(session_id)
-
-    # Agent doğrulama: session gerçek mi ve token oda token'ı ile örtüşüyor mu?
-    if not session:
-        await websocket.close(code=4001, reason="Geçersiz session")
-        return
-
-    entry = validate_join_token(token)
-    if not entry or entry["room_id"] != session["room_id"]:
-        await websocket.close(code=4001, reason="Geçersiz token")
-        return
-
-    await websocket.accept()
-    agent_connections[agent_id] = websocket
-    logger.info(f"Agent connected: {agent_id}")
-
-    try:
-        while True:
-            data     = await websocket.receive_json()
-            msg_type = data.get("type")
-            sess_id  = data.get("session_id")
-
-            if msg_type == "frame":
-                sess = control_sessions.get(sess_id)
-                if sess and sess.get("approved") and sess.get("controller_ws"):
-                    try:
-                        await sess["controller_ws"].send_json({
-                            "type":       "remote-frame",
-                            "session_id": sess_id,
-                            "frame":      data.get("frame"),
-                            "width":      data.get("width"),
-                            "height":     data.get("height"),
-                        })
-                    except Exception:
-                        pass
-
-            elif msg_type == "agent-ready":
-                sess = control_sessions.get(sess_id)
-                if sess:
-                    sess["agent_ws"] = websocket
-                    sess["agent_id"] = agent_id
-
-    except WebSocketDisconnect:
-        agent_connections.pop(agent_id, None)
-        for sid, sess in list(control_sessions.items()):
-            if sess.get("agent_id") == agent_id:
-                ctrl_ws = sess.get("controller_ws")
-                if ctrl_ws:
-                    try:
-                        await ctrl_ws.send_json({"type": "remote-disconnected", "session_id": sid})
-                    except Exception:
-                        pass
-                del control_sessions[sid]
-        logger.info(f"Agent disconnected: {agent_id}")
-    except Exception as e:
-        logger.error(f"Agent error {agent_id}: {e}")
-        agent_connections.pop(agent_id, None)
 
 
 # ─── WebSocket: Controller ────────────────────────────────────────────────────
@@ -651,6 +655,7 @@ async def request_control(request: Request, data: dict):
         "controller_ws":      None,
         "agent_ws":           None,
         "agent_id":           None,
+        "agent_key":          secrets.token_urlsafe(16),
     }
 
     sent = False
@@ -658,6 +663,7 @@ async def request_control(request: Request, data: dict):
         await manager.send_to_peer(room_id, target_peer_id, {
             "type":               "control-request",
             "session_id":         session_id,
+            "agent_key":          control_sessions[session_id]["agent_key"],
             "controller_peer_id": controller_peer_id,
             "controller_name":    controller_name,
         })

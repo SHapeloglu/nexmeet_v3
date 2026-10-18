@@ -1241,7 +1241,7 @@ function cancelControlRequest() {
     fetch('/api/control/stop', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ session_id: remote.sessionId })
+      body: JSON.stringify({ token: state.joinToken, session_id: remote.sessionId })
     });
     remote.sessionId = null;
   }
@@ -1389,7 +1389,7 @@ function stopRemoteControl() {
     fetch('/api/control/stop', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ session_id: remote.sessionId })
+      body: JSON.stringify({ token: state.joinToken, session_id: remote.sessionId })
     });
     remote.sessionId = null;
   }
@@ -1407,9 +1407,11 @@ function toggleRemoteFullscreen() {
 
 // ── Hedef Tarafı (İzin veren) ─────────────────────────────────────────────────
 let pendingControlSession = null;
+let pendingAgentKey = null;
 
 function onControlRequest(msg) {
   pendingControlSession = msg.session_id;
+  pendingAgentKey = msg.agent_key;
   document.getElementById('remoteRequestText').textContent =
     `"${msg.controller_name}" adlı kullanıcı bilgisayarınızı kontrol etmek istiyor.`;
   showModal('remoteRequestModal', true);
@@ -1432,15 +1434,16 @@ function approveControlRequest() {
   const session = pendingControlSession;
 
   // Windows bilgileri
-  const winInfo = `Sunucu: ${serverAddr}\nOturum Kodu: ${session}`;
+  const winInfo = `Sunucu: ${serverAddr}\nOturum Kodu: ${session}\nAjan Anahtarı: ${pendingAgentKey}`;
   document.getElementById('agentCmdWindows').textContent = winInfo;
 
   // Linux komutu
-  const linuxCmd = `chmod +x linux_agent.sh && ./linux_agent.sh\n# Sunucu: ${serverAddr}\n# Oturum: ${session}`;
+  const linuxCmd = `chmod +x linux_agent.sh && ./linux_agent.sh\n# Sunucu: ${serverAddr}\n# Oturum: ${session}\n# Ajan anahtarı: ${pendingAgentKey}`;
   document.getElementById('agentCmdLinux').textContent = linuxCmd;
 
   showModal('remoteAgentModal', true);
   pendingControlSession = null;
+  pendingAgentKey = null;
 }
 
 function switchOsTab(os) {

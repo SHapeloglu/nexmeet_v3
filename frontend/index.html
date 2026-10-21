@@ -28,8 +28,13 @@
     <h1>Görüntülü toplantı,<br/><em>yeniden tasarlandı.</em></h1>
     <p class="subtitle">Anlık video konferans. Ekran paylaşımı. Kayıt. Sıfır kurulum.</p>
 
+    <div class="kullanici-cubugu" id="kullaniciCubugu" hidden>
+      <span>Merhaba <strong id="kullaniciAd"></strong></span>
+      <span aria-hidden="true">·</span>
+      <button type="button" id="cikisBtn">Çıkış</button>
+    </div>
+
     <div class="lobby-form">
-      <input id="username" type="text" placeholder="Adınız" maxlength="30" />
       <div class="room-row">
         <input id="roomInput" type="text" placeholder="Toplantı kodu (boş = yeni oda)" maxlength="20" />
         <button id="joinBtn" class="btn-primary">Katıl</button>

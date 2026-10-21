@@ -35,3 +35,8 @@ Thumbs.db
 
 # Docker
 docker-compose.override.yml
+
+# Test ortamı ve yerel mail çıktıları (commit edilmez)
+.venv-test/
+mail_kutusu/
+.pytest_cache/

@@ -81,6 +81,46 @@ nexmeet/
 | `HOST`, `PORT` | Dinleme adresi ve portu |
 | `TTS_SERVICE_URL` | TTS servisi adresi (boşsa çeviri uçları 503 döner) |
 | `TTS_API_KEY` | TTS servisindeki `API_KEY` ile aynı olmalı |
+| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | Üyelik veritabanı (MySQL). Varsayılan port 3306, ad `nexmeet`. Bağlanılamazsa üyelik uçları 503 döner, toplantı çalışmaya devam eder |
+| `PUBLIC_BASE_URL` | Doğrulama ve sıfırlama bağlantılarının kök adresi (örn. `https://nexmeet.powerbiegitimi.com`). Origin kontrolünde de kullanılır |
+| `MAIL_BACKEND` | `smtp` (varsayılan) veya `dosya` (test: mail göndermez, `MAIL_DIR` klasörüne `.txt` yazar) |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | SMTP ayarları (STARTTLS, varsayılan port 587) |
+| `FORWARDED_ALLOW_IPS` | Nginx/Docker arkasında `*` olmalı; yoksa tüm kullanıcılar tek IP sayılır ve hız sınırları ortak olur |
+| `MAIL_DIR` | `MAIL_BACKEND=dosya` iken mail çıktılarının klasörü (varsayılan `mail_kutusu/`) |
+
+---
+
+## 👤 Üyelik ve Giriş
+
+Toplantılara yalnız üyeler katılabilir. Oda sayfasına giriş yapmamış kullanıcı giriş sayfasına yönlendirilir ve giriş sonrası aynı odaya döner.
+
+- **Kayıt:** ad soyad (2–50 karakter), e-posta, parola (10–128 karakter). Doğrulama bağlantısı 24 saat geçerlidir ve tek kullanımlıktır. Doğrulanmadan giriş yapılamaz.
+- **Oturum:** 30 gün sabit süreli, `HttpOnly`, `Secure`, `SameSite=Lax` çerez. Çıkış oturumu veritabanından siler.
+- **Parola sıfırlama:** 1 saat geçerli, tek kullanımlık bağlantı. Sıfırlama tüm oturumları kapatır.
+- **Hesap silme:** parola istenir; hesap ve oturumları silinir.
+- **Koruma:** parolalar argon2 ile hash'lenir; token'lar veritabanında yalnız SHA-256 özeti olarak tutulur. 10 hatalı girişten sonra hesap 15 dakika kilitlenir. Kayıt, giriş ve mail uçlarında IP başına hız sınırı ve e-posta başına günlük mail kotası (5) vardır. Kayıt ve parola sıfırlama yanıtları, e-posta kayıtlı olup olmadığını belli etmez.
+
+### Kurulum adımları (üyelik)
+
+```bash
+# 1) MySQL'de veritabanı ve kullanıcı (tablolar uygulama açılışında oluşturulur)
+#    CREATE DATABASE nexmeet CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+# 2) .env içinde DB_*, PUBLIC_BASE_URL ve SMTP_* değerlerini doldurun (.env.example'a bakın)
+# 3) Bağımlılıklar (PyMySQL, argon2-cffi dahil)
+pip install -r backend/requirements.txt
+# 4) Sağlık kontrolü: {"durum":"tamam","db":"tamam"} dönmeli
+curl -s http://127.0.0.1:8000/api/saglik
+```
+
+Testler gerçek bir MySQL gerektirir (tek kullanımlık konteyner önerilir; ortak sunucu kullanılmamalı):
+
+```bash
+docker run -d --rm --name nexmeet-test-mysql -e MYSQL_ROOT_PASSWORD=<rastgele> \
+  -e MYSQL_DATABASE=nexmeet -p 127.0.0.1:33999:3306 --memory 512m mysql:8.0
+python3 -m venv .venv-test && .venv-test/bin/pip install -r backend/requirements.txt -r tests/requirements.txt
+TEST_DB_PASSWORD=<rastgele> .venv-test/bin/pytest tests -q
+docker stop nexmeet-test-mysql
+```
 
 ---
 
@@ -103,7 +143,17 @@ cd backend && uvicorn main:app --host 127.0.0.1 --port 8000
 
 | Uç nokta | Açıklama |
 |----------|----------|
-| `POST /api/join-token` | `{name, room_id}` → `{token, peer_id}` (20/dk). `peer_id` istemciden alınmaz |
+| `POST /api/join-token` | `{room_id}` → `{token, peer_id}` (20/dk). Yalnız giriş yapmış ve doğrulanmış kullanıcı; ad hesaptan gelir |
+| `POST /api/auth/kayit` | `{ad_soyad, eposta, parola}` → her durumda aynı yanıt (5/saat) |
+| `POST /api/auth/dogrula` | `{token}` → e-posta doğrulama |
+| `POST /api/auth/dogrulama-tekrar` | `{eposta}` → doğrulama mailini yeniden gönder (3/saat) |
+| `POST /api/auth/giris` | `{eposta, parola, yonlendirme}` → oturum çerezi (10/dk) |
+| `GET /api/ben` | Oturumdaki kullanıcı |
+| `POST /api/auth/cikis` | Oturumu sonlandırır |
+| `POST /api/auth/sifre-unuttum` | `{eposta}` → sıfırlama bağlantısı (3/saat) |
+| `POST /api/auth/sifre-sifirla` | `{token, parola}` → yeni parola, tüm oturumları kapatır |
+| `POST /api/auth/hesabi-sil` | `{parola}` → hesabı ve oturumları siler |
+| `GET /api/saglik` | Servis ve veritabanı durumu |
 | `GET /api/room/{id}/info` | Yalnızca katılımcı sayısı |
 | `POST /api/upload/{room_id}` | Dosya yükle (10/dk) |
 | `GET /api/download/{file_id}?token=` | Dosya indir (30/dk) |

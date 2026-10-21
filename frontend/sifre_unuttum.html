@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex" />
+  <title>NexMeet — Şifremi unuttum</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body class="auth-body">
+<main class="auth-kart">
+  <div class="logo">
+    <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
+      <rect width="40" height="40" rx="12" fill="#6EE7B7"/>
+      <path d="M10 14h12v8l6-4v8l-6-4v2H10z" fill="#0a0a0a"/>
+    </svg>
+    <span>NexMeet</span>
+  </div>
+  <h1>Şifremi unuttum</h1>
+  <p class="auth-aciklama">Kayıtlı e-posta adresinizi girin. Parola sıfırlama bağlantısı gönderilecek (1 saat geçerlidir).</p>
+  <form id="sifreUnutForm" class="auth-form" novalidate>
+    <label>E-posta
+      <input name="eposta" type="email" autocomplete="email" required maxlength="254" />
+    </label>
+    <button type="submit" id="gonderBtn" class="btn-primary auth-btn">Bağlantı gönder</button>
+  </form>
+  <p id="mesaj" class="auth-mesaj" hidden></p>
+  <nav class="auth-linkler">
+    <a href="/giris">Giriş sayfasına dön</a>
+  </nav>
+</main>
+<script src="/static/js/auth.js"></script>
+</body>
+</html>

@@ -85,6 +85,7 @@ nexmeet/
 | `PUBLIC_BASE_URL` | Doğrulama ve sıfırlama bağlantılarının kök adresi (örn. `https://nexmeet.powerbiegitimi.com`). Origin kontrolünde de kullanılır |
 | `MAIL_BACKEND` | `smtp` (varsayılan) veya `dosya` (test: mail göndermez, `MAIL_DIR` klasörüne `.txt` yazar) |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | SMTP ayarları (STARTTLS, varsayılan port 587) |
+| `FORWARDED_ALLOW_IPS` | Nginx/Docker arkasında `*` olmalı; yoksa tüm kullanıcılar tek IP sayılır ve hız sınırları ortak olur |
 | `MAIL_DIR` | `MAIL_BACKEND=dosya` iken mail çıktılarının klasörü (varsayılan `mail_kutusu/`) |
 
 ---

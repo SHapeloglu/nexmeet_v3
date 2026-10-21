@@ -31,3 +31,14 @@
 
 - Uzak kontrol: indirilen ajan `/ws/agent`'a parametresiz bağlanıyor → 403 (canlıda denendi). Çeviri: Google IP'yi captcha'ya düşürmüş, `TooManyRequests`; backend TTS hatasında `response.json()` ile 500. `/api/control/stop` ön yüzden tokensiz → 401. peer_id taklidi mümkün. nginx 50M ↔ uygulama 100 MB. Ayrıntı `task.md` ve `/root/topluisler.md` #64. Kod değiştirilmedi.
 - AutoSleep 20 dk'ya indirildi; toplantı sürerken açık WebSocket olduğu için uyutmuyor (kontrol edildi).
+
+## 2026-10-21 — E-posta doğrulamalı üyelik (dal `uyelik`, canlıya alınmadı)
+
+**Yapılanlar:** Giriş yapmayan kullanıcı oda ve ana sayfaya giremiyor (girişe yönlenir). Kayıt (ad soyad, e-posta, parola), 24 saatlik tek kullanımlık e-posta doğrulama, 30 gün sabit oturum çerezi, parola sıfırlama (1 saat), çıkış, hesap silme eklendi. `join-token` yalnız doğrulanmış oturuma verilir ve adı hesaptan alır. Veritabanı MySQL (PyMySQL), parolalar argon2. Testler (45 adet) tek kullanımlık `mysql:8.0` konteynerinde geçti; yerelde uvicorn 127.0.0.1:18009 üzerinde curl ile kayıt→doğrulama→giriş→join-token→çıkış akışı çalıştırıldı.
+
+**Kararlar / neden:** Kayıt ve sıfırlama yanıtı kayıtlı olup olmadığını göstermez; mail arka planda gönderilir (zamanlama sızıntısı azalır). Sıfırlama, e-posta sahipliğini kanıtladığı için hesabı doğrulanmış sayar. Kayıtlı e-postaya yapılan kayıt sessizce yok sayılır (parola değiştirilemez). Giriş ucu `yonlendirme` değerini sunucuda doğrular.
+
+**Açık sorunlar:** Canlı veritabanı ve SMTP ayarları yok; canlıya dağıtım yapılmadı. Hesap silme için arayüz yok (yalnız uç). Tarayıcıda (gerçek kamera/mikrofon ve düğmeler) elle test edilmedi. Parolasız oturum düşürme ve IP başına hız sınırı, nginx arkasında `X-Forwarded-For` ile doğru IP'ye dayanır (uvicorn varsayılanı).
+
+**Sıradaki adım:** Canlı DB kullanıcısı ve SMTP kurulumu; tarayıcı testi; dağıtım kararı.
+

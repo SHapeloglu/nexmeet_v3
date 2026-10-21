@@ -5,8 +5,10 @@ import os
 import time
 import secrets
 import mimetypes
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Dict, Optional
+from urllib.parse import urlencode
 from dotenv import load_dotenv
 
 from fastapi import (
@@ -15,13 +17,16 @@ from fastapi import (
     Depends, Header, Request
 )
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 import asyncio
 import aiofiles
+import pymysql
+
+import auth
+import db
 
 # ─── Config ──────────────────────────────────────────────────────────────────
 load_dotenv()
@@ -58,6 +63,23 @@ BLOCKED_EXTENSIONS = {
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # Üyelik tabloları. Başarısızsa uygulama yine açılır; üyelik uçları 503 döner.
+    try:
+        await asyncio.to_thread(db.sema_olustur)
+        logger.info("Üyelik veritabanı hazır (%s:%s/%s).",
+                    os.getenv("DB_HOST", "127.0.0.1"), os.getenv("DB_PORT", "3306"),
+                    os.getenv("DB_NAME", "nexmeet"))
+    except Exception as e:  # noqa: BLE001
+        logger.error(
+            "Üyelik veritabanı hazır değil (%s: %s). Giriş/kayıt uçları 503 dönecek; "
+            "toplantı özellikleri etkilenmez. DB_HOST/DB_PORT/DB_USER/DB_NAME ayarlarını kontrol edin.",
+            type(e).__name__, e,
+        )
+    yield
+
 FILE_TTL_SECONDS = 3600  # Dosyalar 1 saat sonra silinir (değiştirilebilir)
 
 async def auto_delete_file(file_id: str, path: str, delay: int):
@@ -71,11 +93,23 @@ async def auto_delete_file(file_id: str, path: str, delay: int):
     except Exception as e:
         logger.error(f"Silme hatası: {e}")
 
-# ─── Rate Limiter ─────────────────────────────────────────────────────────────
-limiter = Limiter(key_func=get_remote_address)
-app = FastAPI(title="NexMeet")
+# ─── Rate Limiter (üyelik uçlarıyla aynı örnek) ───────────────────────────────
+limiter = auth.limiter
+app = FastAPI(title="NexMeet", lifespan=lifespan)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+@app.exception_handler(pymysql.MySQLError)
+async def veritabani_hatasi(_request: Request, exc: pymysql.MySQLError):
+    logger.error("Veritabanı hatası: %s", exc)
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "Üyelik servisi şu an kullanılamıyor. Lütfen daha sonra tekrar deneyin."},
+    )
+
+
+app.include_router(auth.router)
 
 # ─── CORS (production'da * yasak) ────────────────────────────────────────────
 app.add_middleware(
@@ -229,14 +263,34 @@ manager = ConnectionManager()
 
 # ─── HTTP Endpoints ───────────────────────────────────────────────────────────
 
+def _girise_yonlendir(yol: str) -> RedirectResponse:
+    return RedirectResponse(url="/giris?" + urlencode({"next": yol}), status_code=302)
+
+
 @app.get("/")
-async def root():
+async def root(request: Request):
+    if not await auth.oturum_var_mi(request):
+        return _girise_yonlendir("/")
     return FileResponse(FRONTEND_DIR / "index.html")
 
 
 @app.get("/room/{room_id}")
-async def get_room(room_id: str):
+async def get_room(request: Request, room_id: str):
+    if not await auth.oturum_var_mi(request):
+        return _girise_yonlendir(f"/room/{room_id}")
     return FileResponse(FRONTEND_DIR / "index.html")
+
+
+@app.get("/api/saglik")
+async def saglik():
+    # Veritabanı durumunu canlı kontrol eder; toplantı servisi DB'den bağımsız çalışır.
+    try:
+        await asyncio.to_thread(db.kontrol)
+        db_durum = "tamam"
+    except Exception as e:  # noqa: BLE001
+        logger.error("Sağlık kontrolü: veritabanı hatası (%s: %s)", type(e).__name__, e)
+        db_durum = "hata"
+    return {"durum": "tamam", "db": db_durum}
 
 
 @app.get("/api/room/{room_id}/info")
@@ -249,14 +303,16 @@ async def room_info(room_id: str):
 @limiter.limit("20/minute")
 async def create_join_token(request: Request, data: dict):
     """
-    Oda katılım token'ı oluştur.
-    Frontend bu token'ı alır ve WS bağlantısında kullanır.
+    Oda katılım token'ı oluştur. Yalnız giriş yapmış ve doğrulanmış kullanıcıya verilir.
+    Görünen ad hesaptan gelir; istemciden alınan ad yok sayılır.
     """
-    name    = str(data.get("name", "")).strip()[:50]
+    auth.origin_kontrol(request)
+    kullanici = await auth.oturumlu_kullanici(request)
+    name    = str(kullanici["display_name"]).strip()[:50]
     room_id = str(data.get("room_id", "")).strip()[:20]
 
-    if not name or not room_id:
-        raise HTTPException(status_code=400, detail="name ve room_id zorunlu.")
+    if not room_id:
+        raise HTTPException(status_code=400, detail="room_id zorunlu.")
 
     # peer_id istemciden alınmaz: sunucu üretir, başkası aynı kimliği isteyemez.
     peer_id = secrets.token_urlsafe(9)

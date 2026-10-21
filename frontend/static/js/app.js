@@ -106,22 +106,60 @@ async function initLobby() {
   document.getElementById('roomInput').addEventListener('keydown', e => {
     if (e.key === 'Enter') joinMeeting();
   });
-  document.getElementById('username').addEventListener('keydown', e => {
-    if (e.key === 'Enter') joinMeeting();
+  // Oda bağlantısıyla gelindiyse (/room/<id>) kodu önceden doldur
+  const odaYolu = location.pathname.match(/^\/room\/(.+)$/);
+  if (odaYolu && !document.getElementById('roomInput').value) {
+    try {
+      document.getElementById('roomInput').value = decodeURIComponent(odaYolu[1]).slice(0, 20);
+    } catch (e) { /* bozuk kodlama: boş bırak */ }
+  }
+}
+
+// ─── Üyelik: oturum kontrolü ─────────────────────────────────────────────────
+function girisAdresi() {
+  return '/giris?' + new URLSearchParams({ next: location.pathname || '/' }).toString();
+}
+
+// Oturum yoksa girişe yönlendirir; varsa görünen adı alır. true/false döner.
+async function oturumYukle() {
+  let res;
+  try {
+    res = await fetch('/api/ben', { credentials: 'same-origin' });
+  } catch (e) {
+    showToast('Sunucuya ulaşılamadı.');
+    return false;
+  }
+  if (res.status === 401) {
+    location.href = girisAdresi();
+    return false;
+  }
+  if (!res.ok) {
+    showToast('Oturum bilgisi alınamadı. Sayfayı yenileyin.');
+    return false;
+  }
+  const kullanici = await res.json();
+  state.userName = kullanici.display_name;
+  document.getElementById('kullaniciAd').textContent = kullanici.display_name;
+  document.getElementById('kullaniciCubugu').hidden = false;
+  document.getElementById('cikisBtn').addEventListener('click', async () => {
+    try {
+      await fetch('/api/auth/cikis', { method: 'POST', credentials: 'same-origin' });
+    } finally {
+      location.href = '/giris';
+    }
   });
+  return true;
 }
 
 async function joinMeeting() {
-  const nameInput = document.getElementById('username').value.trim();
   const roomInput = document.getElementById('roomInput').value.trim();
 
-  if (!nameInput) {
-    showToast('Lütfen adınızı girin.');
-    document.getElementById('username').focus();
+  if (!state.userName) {
+    showToast('Oturum bilgisi yok. Lütfen giriş yapın.');
+    location.href = girisAdresi();
     return;
   }
 
-  state.userName = nameInput;
   state.roomId = roomInput || generateId(8);
 
   // Ensure we have a stream
@@ -148,8 +186,13 @@ async function joinMeeting() {
     const res = await fetch('/api/join-token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: state.userName, room_id: state.roomId }),
+      body: JSON.stringify({ room_id: state.roomId }),
+      credentials: 'same-origin',
     });
+    if (res.status === 401) {
+      location.href = girisAdresi();
+      return;
+    }
     if (!res.ok) throw new Error('Token alınamadı');
     const tokenData = await res.json();
     state.joinToken = tokenData.token;
@@ -1154,7 +1197,8 @@ function escapeHtml(str) {
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
-initLobby();
+// Önce oturum kontrol edilir; giriş yapılmamışsa kullanıcı girişe yönlenir.
+oturumYukle().then(ok => { if (ok) initLobby(); });
 
 // ─── Remote Control ──────────────────────────────────────────────────────────
 const remote = {

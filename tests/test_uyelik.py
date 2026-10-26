@@ -428,6 +428,23 @@ def test_hesap_silme_girissiz_401(istemci):
     assert r.status_code == 401
 
 
+def test_hesabim_sayfasi_girissiz_girise_yonlenir(istemci):
+    r = istemci.get("/hesabim", follow_redirects=False)
+    assert r.status_code == 302
+    assert r.headers["location"] == "/giris?next=%2Fhesabim"
+
+
+def test_hesabim_sayfasi_girisli_acilir(istemci):
+    c = istemci
+    kayit_ve_dogrula(c)
+    assert giris(c).status_code == 200
+    r = c.get("/hesabim", follow_redirects=False)
+    assert r.status_code == 200
+    assert 'id="hesapSilForm"' in r.text
+    assert 'id="silBtn"' in r.text
+    assert "/static/js/hesabim.js" in r.text
+
+
 def test_cikis_oturumu_db_den_siler(istemci):
     c = istemci
     kayit_ve_dogrula(c)

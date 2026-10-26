@@ -97,7 +97,7 @@ Toplantılara yalnız üyeler katılabilir. Oda sayfasına giriş yapmamış kul
 - **Kayıt:** ad soyad (2–50 karakter), e-posta, parola (10–128 karakter). Doğrulama bağlantısı 24 saat geçerlidir ve tek kullanımlıktır. Doğrulanmadan giriş yapılamaz.
 - **Oturum:** 30 gün sabit süreli, `HttpOnly`, `Secure`, `SameSite=Lax` çerez. Çıkış oturumu veritabanından siler.
 - **Parola sıfırlama:** 1 saat geçerli, tek kullanımlık bağlantı. Sıfırlama tüm oturumları kapatır.
-- **Hesap silme:** parola istenir; hesap ve oturumları silinir.
+- **Hesabım / hesap silme:** `/hesabim` sayfasında oturum bilgisi gösterilir. Parola ve onay kutusuyla hesap ve tüm oturumlar kalıcı olarak silinir (geri alınamaz). Sayfaya lobideki "Hesabım" bağlantısından ulaşılır.
 - **Koruma:** parolalar argon2 ile hash'lenir; token'lar veritabanında yalnız SHA-256 özeti olarak tutulur. 10 hatalı girişten sonra hesap 15 dakika kilitlenir. Kayıt, giriş ve mail uçlarında IP başına hız sınırı ve e-posta başına günlük mail kotası (5) vardır. Kayıt ve parola sıfırlama yanıtları, e-posta kayıtlı olup olmadığını belli etmez.
 
 ### Kurulum adımları (üyelik)

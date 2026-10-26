@@ -18,12 +18,13 @@ import unicodedata
 from datetime import timedelta
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlencode
 
 import pymysql
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -64,7 +65,7 @@ _SAHTE_HASH = PH.hash(secrets.token_urlsafe(24))
 
 EPOSTA_RE = re.compile(r"[^@\s]{1,64}@[^@\s]+\.[^@\s]{2,}")
 # Güvenli göreli yönlendirme: "/" veya "/room/<id>" (eğik çizgi, ters eğik, sorgu, kaçış içermez)
-YONLENDIRME_RE = re.compile(r"/(room/[^/\\?#%\s\x00-\x1f\x7f]{1,64})?")
+YONLENDIRME_RE = re.compile(r"/(room/[^/\\?#%\s\x00-\x1f\x7f]{1,64}|hesabim)?")
 
 
 # ─── Yardımcılar ─────────────────────────────────────────────────────────────
@@ -299,6 +300,14 @@ async def sayfa_sifre_unuttum():
 @router.get("/sifre-sifirla")
 async def sayfa_sifre_sifirla():
     return FileResponse(FRONTEND_DIR / "sifre_sifirla.html")
+
+
+@router.get("/hesabim")
+async def sayfa_hesabim(request: Request):
+    # Oturumsuz ziyaret girişe yönlenir; giriş sonrası dönüş hedefi YONLENDIRME_RE ile doğrulanır
+    if not await oturum_var_mi(request):
+        return RedirectResponse(url="/giris?" + urlencode({"next": "/hesabim"}), status_code=302)
+    return FileResponse(FRONTEND_DIR / "hesabim.html")
 
 
 # ─── Kayıt ve doğrulama ──────────────────────────────────────────────────────

@@ -65,7 +65,7 @@ _SAHTE_HASH = PH.hash(secrets.token_urlsafe(24))
 
 EPOSTA_RE = re.compile(r"[^@\s]{1,64}@[^@\s]+\.[^@\s]{2,}")
 # Güvenli göreli yönlendirme: "/" veya "/room/<id>" (eğik çizgi, ters eğik, sorgu, kaçış içermez)
-YONLENDIRME_RE = re.compile(r"/(room/[^/\\?#%\s\x00-\x1f\x7f]{1,64})?")
+YONLENDIRME_RE = re.compile(r"/(room/[^/\\?#%\s\x00-\x1f\x7f]{1,64}|hesabim)?")
 
 
 # ─── Yardımcılar ─────────────────────────────────────────────────────────────
@@ -304,7 +304,7 @@ async def sayfa_sifre_sifirla():
 
 @router.get("/hesabim")
 async def sayfa_hesabim(request: Request):
-    # Oturumsuz ziyaret girişe yönlenir; giriş sonrası dönüş hedefi allowlist dışında olabilir (bkz. YONLENDIRME_RE)
+    # Oturumsuz ziyaret girişe yönlenir; giriş sonrası dönüş hedefi YONLENDIRME_RE ile doğrulanır
     if not await oturum_var_mi(request):
         return RedirectResponse(url="/giris?" + urlencode({"next": "/hesabim"}), status_code=302)
     return FileResponse(FRONTEND_DIR / "hesabim.html")

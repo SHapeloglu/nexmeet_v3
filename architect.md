@@ -35,7 +35,7 @@ Kontrol edilecek bilgisayarda `agent.py` (Windows `.bat` / Linux `.sh` başlatı
 - Konteyner `nexmeet-tts`: Kokoro ONNX TTS servisi, ortam `tts.env`, `restart unless-stopped`. İmaj `Dockerfile.tts` ile üretilir. Kaynağı yalnızca sunucuda; repoda yok.
 - Ağlar: `nexmeet` (dahili) ve dış `ortak-db`.
 - Sunucuda otomatik uyku (AutoSleep) mekanizması var; uygulama bu sistemin dışındadır ve yalnızca sunucu tarafında çalışır.
-- Eski systemd birimleri (`nexmeet.service`, `nexmeet-tts.service`, `/root/nexmeet`) kullanımdan kalktı, devre dışı; kaldırılması `task.md`'de.
+- Eski systemd birimleri (`nexmeet.service`, `nexmeet-tts.service`) ve `/root/nexmeet` kaldırıldı (yedek sunucuda).
 - `docker/` klasörü canlı Docker kurulumunun yerel karşılığıdır (yalnız uygulama servisi; TTS repoda değil).
 ## Mimari Kararlar
 

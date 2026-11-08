@@ -27,7 +27,7 @@ Canlı dağıtım Docker Compose (`/opt/nexmeet`); repo ile sunucu arasındaki f
 - [ ] (a) Sunucudaki düzeltmeyi GitHub'a push et — kullanıcı onayından sonra (commit/push henüz yapılmadı)
 - [ ] (b) TTS servisi kaynağını repoya ekleme kararı (şu an yalnızca sunucuda)
 - [ ] (c) Üyelik veritabanı bağlantısını doğrula (canlı MySQL erişimi)
-- [ ] (d) Eski systemd birimlerini kaldır: `nexmeet.service`, `nexmeet-tts.service`, `/root/nexmeet` (şu an devre dışı)
+- [x] (d) Eski systemd birimleri kaldırıldı: `nexmeet.service`, `nexmeet-tts.service`, `/root/nexmeet` (yedek sunucuda)
 
 ## 🚧 Devam Eden
 

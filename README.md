@@ -29,12 +29,12 @@ Tarayıcı (frontend/index.html + static/js/app.js)
   │ 2) WS /ws/{room}/{peer}   (sinyalizasyon, sohbet, durum)
   │ 3) WebRTC P2P             (medya)
   ▼
-nginx → FastAPI (backend/main.py, systemd: nexmeet, 127.0.0.1:8009)
+nginx → FastAPI (backend/main.py, Docker konteyneri: nexmeet, 127.0.0.1:8009)
   ├─ /api/upload, /api/download, /api/room/{id}/files   → uploads/ (TTL 1 saat)
   ├─ WS /ws/agent/{id}                ← uzak kontrol ajanı (kontrol edilen bilgisayar)
   ├─ WS /ws/control/{oturum}/{peer}   ← kontrol eden tarayıcı
   ├─ /api/control/request|respond|stop
-  └─ /api/tts/*  ──HTTP + x-api-key──►  nexmeet-tts (127.0.0.1:5000)
+  └─ /api/tts/*  ──HTTP + x-api-key──►  nexmeet-tts (Docker konteyneri)
                                          faster-whisper (STT) → çeviri → Kokoro ONNX (TTS), CPU
 ```
 
@@ -64,7 +64,7 @@ nexmeet/
 └── .env.example
 ```
 
-> `backend/tts/`, `backend/app.js` ve `docker/` eski sürümlerden kalmadır, canlıda kullanılmaz.
+> `backend/tts/` ve `backend/app.js` eski sürümlerden kalmadır, canlıda kullanılmaz. `docker/` (Dockerfile + compose) canlı uygulama servisinin yerel karşılığıdır; canlı Dockerfile'lar, gerçek compose dosyası ve ortam dosyaları sunucuda `/opt/nexmeet` altındadır. TTS servisinin kaynağı yalnızca sunucudadır.
 
 ---
 
@@ -135,7 +135,7 @@ cp .env.example .env        # değerleri doldurun
 cd backend && uvicorn main:app --host 127.0.0.1 --port 8000
 ```
 
-Üretimde uvicorn systemd ile (`WorkingDirectory=…/backend`, `EnvironmentFile=…/.env`) çalıştırılır; nginx TLS sonlandırır ve WebSocket yükseltmesini (`Upgrade`/`Connection`) iletir. Kamera ve mikrofon için HTTPS gerekir (`localhost` hariç).
+Üretimde uygulama Docker Compose ile çalışır (`nexmeet` ve `nexmeet-tts` konteynerleri, sunucuda `/opt/nexmeet`); ortam değerleri konteynerlere ayrı env dosyalarından verilir. Sunucuda otomatik uyku (AutoSleep) mekanizması vardır. nginx TLS sonlandırır ve WebSocket yükseltmesini (`Upgrade`/`Connection`) iletir. Kamera ve mikrofon için HTTPS gerekir (`localhost` hariç).
 
 ---
 
@@ -197,9 +197,9 @@ Ajan gereksinimleri: `pyautogui`, `mss`, `websockets`, `pillow` (Linux'ta ayrıc
 ## 🔧 Sorun Giderme
 
 ```bash
-sudo systemctl status nexmeet          # servis durumu
-sudo journalctl -u nexmeet -n 100 --no-pager
-curl -s http://127.0.0.1:5000/health   # TTS servisi (varsa)
+docker ps --filter name=nexmeet        # konteyner durumu
+docker logs --tail 100 nexmeet         # uygulama logu
+docker logs --tail 100 nexmeet-tts     # TTS servisi logu
 ```
 
 - **Çeviri çalışmıyor (503/502):** `TTS_SERVICE_URL` tanımlı mı, TTS servisi ayakta mı, `TTS_API_KEY` iki tarafta aynı mı?
@@ -211,7 +211,7 @@ curl -s http://127.0.0.1:5000/health   # TTS servisi (varsa)
 
 ## 🗂️ İlgili
 
-TTS servisi ayrı bir projedir (`nexmeet-tts`): faster-whisper tiny + yerel çeviri + Kokoro ONNX, yalnızca CPU.
+TTS servisi ayrı bir projedir (`nexmeet-tts`): faster-whisper tiny + yerel çeviri + Kokoro ONNX, yalnızca CPU. Kaynak kodu bu repoda değildir; yalnızca sunucudadır.
 
 ## 🏷️ Lisans
 

@@ -1,3 +1,6 @@
+"""TTS için metin parçalama yardımcıları. Uzun metni cümlelere böler; ilk cümle hazır olur olmaz seslendirilip gönderilebilsin diye.
+estimate_duration ise metnin kaç saniyede okunacağını kelime sayısından tahmin eder.
+Bu dosya tts paketinin parçasıdır ve canlı sistemde kullanılmaz (bkz. engine.py)."""
 import re
 from typing import List
 

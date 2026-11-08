@@ -1,3 +1,6 @@
+"""TTS ve STT motoru: Whisper ile konuşma tanıma, Chatterbox ile ses klonlu sentez, ayrıca TTS kuyruğu için kullanılan çekirdek.
+DİKKAT: Bu paket şu an kullanılmıyor. main.py bu paketi import etmez; canlı sistem çeviri ve sesi ayrı TTS servisinden (Kokoro, CPU) alır. Dosya EC2 + GPU tasarımından kalma: torch, whisper ve /home/ubuntu yolları sabit yazılı.
+Import edilirse torch ve whisper kurulu olmalıdır; import sırasında /home/ubuntu altında klasörler oluşturulmaya çalışılır."""
 import os
 import time
 import asyncio
@@ -13,15 +16,18 @@ VOICE_PROFILES_DIR = Path("/home/ubuntu/nexmeet/voice_profiles")
 TEMP_RECORDINGS_DIR = Path("/home/ubuntu/nexmeet/temp_recordings")
 RECORDINGS_DIR = Path("/home/ubuntu/nexmeet/recordings")
 
+# Klasörler yoksa oluşturulur. DİKKAT: /home/ubuntu yolları EC2 kurulumuna aittir; bu yollar başka makinede yoksa import sırasında izin ya da yol hatası alınabilir.
 for d in [VOICE_PROFILES_DIR, TEMP_RECORDINGS_DIR, RECORDINGS_DIR]:
     d.mkdir(exist_ok=True)
 
 # ─── TTSEngine ────────────────────────────────────────────────────────────────
 class TTSEngine:
+    """Ses tanıma (Whisper) ve ses klonlu sentez (Chatterbox) motorunun tek örneği (singleton). Modeller ağır olduğu için initialize ile bir kez yüklenir; tüm konuşmacılar aynı nesneyi kullanır."""
     _instance = None
     _lock = asyncio.Lock()
 
     def __init__(self):
+        """Model alanlarını boş başlatır ve ses önbelleğini kurar. Modeller burada yüklenmez; initialize çağrılmadan kullanılamaz."""
         self.tts_model = None
         self.stt_model = None
         self._speaker_cache: Dict[str, Tuple[dict, float]] = {}
@@ -30,6 +36,7 @@ class TTSEngine:
 
     @classmethod
     def get_instance(cls):
+        """TTSEngine'in tek örneğini döner, yoksa oluşturur. TTS kuyruğu (queue.py) motora bu metodla ulaşır."""
         if cls._instance is None:
             cls._instance = TTSEngine()
         return cls._instance
@@ -62,6 +69,7 @@ class TTSEngine:
         return None
 
     def _set_cached_embedding(self, peer_id: str, embedding: dict):
+        """Konuşmacının ses bilgisini zaman damgasıyla RAM önbelleğine yazar. Süre kontrolü _get_cached_embedding tarafında yapılır."""
         self._speaker_cache[peer_id] = (embedding, time.time())
 
     def _cleanup_cache(self):
@@ -73,10 +81,12 @@ class TTSEngine:
             del self._speaker_cache[k]
 
     def get_profile_path(self, peer_id: str) -> Path:
+        """Konuşmacının ses profili dosyasının yolunu döner. Dosya adı peer_id değerinin MD5 özetidir, böylece kimlik doğrudan dosya adında görünmez. Gerçek ses dosyası .wav olarak kaydedilir; .pt yalnız yol türetmek için kullanılır."""
         safe_id = hashlib.md5(peer_id.encode()).hexdigest()
         return VOICE_PROFILES_DIR / f"{safe_id}.pt"
 
     def has_voice_profile(self, peer_id: str) -> bool:
+        """Konuşmacının ses profili diskte var mı diye bakar. True veya False döner."""
         return self.get_profile_path(peer_id).exists()
 
     async def save_voice_profile(self, peer_id: str, wav_path: str):

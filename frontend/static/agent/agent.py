@@ -17,6 +17,7 @@ Kullanım:
 import asyncio
 import base64
 import json
+import os
 import sys
 import time
 import argparse
@@ -62,6 +63,7 @@ logger = logging.getLogger("nexmeet-agent")
 FRAME_QUALITY   = 50    # JPEG kalitesi (1-95), düşük = daha hızlı ama kalitesiz
 FRAME_WIDTH     = 1280  # Gönderilen frame genişliği (küçültme)
 FRAME_INTERVAL  = 0.05  # Saniyede ~20 kare (0.05s aralık)
+# Ajan kimliği başlangıç zamanından üretilir. Aynı saniyede iki ajan başlarsa kimlikleri çakışabilir.
 AGENT_ID        = f"agent-{int(time.time())}"
 
 # ─── State ───────────────────────────────────────────────────────────────────
@@ -96,6 +98,7 @@ def capture_screen_base64(monitor_num: int = 1) -> tuple[str, int, int]:
 
 
 def get_monitor_count() -> int:
+    """Bağlı ekran sayısını döner (en az 1). mss'in ilk öğesi tüm ekranların birleşimidir; bu yüzden sayıdan bir çıkarılır."""
     with mss.mss() as sct:
         return max(len(sct.monitors) - 1, 1)
 
@@ -162,10 +165,12 @@ def handle_command(data: dict, frame_w: int, frame_h: int):
 
 # ─── WebSocket Ana Döngü ─────────────────────────────────────────────────────
 async def run_agent(server_url: str, session_id: str, key: str = "", monitor_num: int = 1):
+    """Ajanı sunucuya bağlar ve oturumu agent-ready mesajıyla kaydeder. İki işi aynı anda yürütür: ekran karelerini gönderen görev ve sunucudan gelen fare/klavye komutlarını uygulayan döngü. stop-control gelince ya da bağlantı kopunca çıkar. Hataları loglar, dışarı fırlatmaz."""
     global running, session_active, ws_connection
 
+    # Bu adres ajan anahtarını (key) içerir; bu yüzden loga anahtarsız hâli yazılır (terminale/loglara anahtar düşmesin).
     agent_ws_url = server_url.rstrip("/") + f"/ws/agent/{AGENT_ID}?key={key}&session_id={session_id}"
-    logger.info(f"Sunucuya bağlanılıyor: {agent_ws_url}")
+    logger.info(f"Sunucuya bağlanılıyor: {server_url.rstrip('/')}/ws/agent/{AGENT_ID}?key=***&session_id={session_id}")
 
     frame_w, frame_h = FRAME_WIDTH, 720  # Başlangıç tahmini
 
@@ -194,6 +199,7 @@ async def run_agent(server_url: str, session_id: str, key: str = "", monitor_num
 
             # Frame gönderme görevi
             async def send_frames():
+                """Ekranı yaklaşık saniyede 20 kez yakalayıp sunucuya gönderir. Bir kare hata verirse loglanır ve döngü devam eder. Kontrol durunca iptal edilir."""
                 nonlocal frame_w, frame_h
                 while running and session_active:
                     try:
@@ -288,6 +294,7 @@ def run_gui():
     form.pack(padx=30, fill="x", pady=10)
 
     def labeled_entry(parent, label, default=""):
+        """Üstünde etiket olan bir metin kutusu oluşturur ve kutuyu döner. default verilirse kutuya ilk değer olarak yazılır."""
         tk.Label(parent, text=label, font=("Arial", 10), fg="#6b6b80", bg=bg,
                  anchor="w").pack(fill="x", pady=(8, 2))
         e = tk.Entry(parent, font=("Arial", 11), bg=surface, fg=fg,
@@ -332,6 +339,7 @@ def run_gui():
     connect_btn.pack(pady=10)
 
     def on_connect():
+        """Bağlan düğmesine basılınca çalışır. Üç alanın dolu olduğunu kontrol eder, ardından ajanı ayrı bir iş parçacığında (thread) başlatır. Böylece pencere bağlantı sırasında donmaz."""
         server = server_entry.get().strip()
         session = session_entry.get().strip()
         key = key_entry.get().strip()
@@ -345,6 +353,7 @@ def run_gui():
         connect_btn.config(state="disabled")
 
         def run():
+            """Ajan döngüsünü arka plan thread'inde çalıştırır. Hata olursa sessizce yutulur ve kullanıcıya yalnız bağlantı kesildi mesajı gösterilir. Bitince düğme yeniden etkinleştirilir."""
             try:
                 asyncio.run(run_agent(server, session, key, monitor))
             except Exception as e:
@@ -377,20 +386,84 @@ def run_cli_interactive():
     asyncio.run(run_agent(server, session, key, mon))
 
 
+# ─── Anahtar Çözümleme ───────────────────────────────────────────────────────
+def anahtar_coz(args_key, args_key_file, env=None):
+    """
+    Ajan anahtarını üç kaynaktan bulup döndürür. Öncelik sırası yukarıdan aşağıya:
+
+      1. --key-file: dosyanın ilk satırı (baş/son boşluklar silinir).
+      2. --key: eski yöntem. Çalışmaya devam eder ama komut satırı ps listesinde
+         herkes tarafından görülebildiği için uyarı yazılır.
+      3. NEXMEET_AGENT_KEY ortam değişkeni.
+
+    Parametreler:
+        args_key: --key değeri. "" ise verilmemiş demektir.
+        args_key_file: --key-file değeri. None ya da "" ise verilmemiş demektir.
+        env: ortam değişkenleri sözlüğü. Verilmezse os.environ kullanılır
+             (test ederken sahte bir sözlük verilebilir).
+
+    Dönüş: anahtar metni. Hiçbir kaynakta anahtar yoksa "" döner.
+    Hata: --key-file okunamaz ya da boşsa Türkçe hata yazılır ve sys.exit(1) çağrılır.
+
+    Not: Anahtar hiçbir zaman loga ya da ekrana yazılmaz; uyarı ve hata
+    mesajları yalnızca dosya/seçenek adını gösterir.
+    """
+    if env is None:
+        env = os.environ
+
+    # --key kullanıldıysa uyarı basılır. Dosya öncelikli olsa bile, kullanıcı eski yöntemi
+    # kullanmakta olduğunu öğrensin diye uyarı en başta yazılır.
+    if args_key:
+        print(
+            "UYARI: --key ile anahtar verdiniz. Komut satırındaki anahtar süreç listesinde (ps) "
+            "herkese görünür. Bunun yerine NEXMEET_AGENT_KEY ortam değişkenini ya da "
+            "--key-file DOSYA seçeneğini kullanın. --key ileride kaldırılacaktır.",
+            file=sys.stderr,
+        )
+
+    # 1. En yüksek öncelik: --key-file. Dosya okunamazsa başka kaynağa düşmek yerine hemen çıkılır;
+    #    yanlış bir dosya sessizce yok sayılırsa kullanıcı neden bağlanamadığını anlayamaz.
+    if args_key_file:
+        try:
+            # encoding: Dosyanın Türkçe karakter içerse de doğru okunması için UTF-8 belirtilir.
+            with open(args_key_file, "r", encoding="utf-8") as f:
+                # Yalnız ilk satır alınır; dosyada fazladan satır olsa da anahtar ilk satırdır.
+                anahtar = f.readline().strip()
+        except (OSError, UnicodeDecodeError) as e:
+            print(f"HATA: Anahtar dosyası okunamadı: {args_key_file} ({e})", file=sys.stderr)
+            sys.exit(1)
+        # Boş dosya da hata sayılır. Yoksa ajan boş anahtarla bağlanır ve sebebi anlaşılmaz bir hata verir.
+        if not anahtar:
+            print(f"HATA: Anahtar dosyası boş: {args_key_file} (ilk satır anahtar olmalı)", file=sys.stderr)
+            sys.exit(1)
+        return anahtar
+
+    # 2. Eski yöntem: --key değeri olduğu gibi döndürülür (geriye uyum için kırpılmaz).
+    if args_key:
+        return args_key
+
+    # 3. Ortam değişkeni: ps argümanlarında görünmez. linux_agent.sh ve windows_agent.bat bunu kullanır.
+    return env.get("NEXMEET_AGENT_KEY", "").strip()
+
+
 # ─── Ana Giriş ───────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="NexMeet Uzak Kontrol Ajanı")
     parser.add_argument("--server", help="WebSocket sunucu adresi (ws://host:8000)")
     parser.add_argument("--session", help="Oturum ID")
-    parser.add_argument("--key", help="Ajan anahtarı", default="")
+    # --key ps listesinde görünür; bu yüzden eski ve uyarılı bir seçenek olarak tutuluyor.
+    parser.add_argument("--key", help="Ajan anahtarı (ESKİ, ps'te görünür; NEXMEET_AGENT_KEY ya da --key-file kullanın)", default="")
+    # --key-file: anahtarı komut satırına yazmadan, dosyadan okutmak için.
+    parser.add_argument("--key-file", metavar="DOSYA", help="Ajan anahtarının bulunduğu dosya (ilk satır okunur)")
     parser.add_argument("--monitor", type=int, default=1, help="Ekran numarası (varsayılan: 1)")
     parser.add_argument("--nogui", action="store_true", help="GUI olmadan çalıştır")
     args = parser.parse_args()
 
     if args.server and args.session:
-        # Doğrudan parametrelerle çalıştır
+        # Doğrudan parametrelerle çalıştır. Anahtar, öncelik sırasına göre bulunur (bkz. anahtar_coz).
         logger.info(f"Ekran {args.monitor} paylaşılıyor...")
-        asyncio.run(run_agent(args.server, args.session, args.key, args.monitor))
+        anahtar = anahtar_coz(args.key, args.key_file)
+        asyncio.run(run_agent(args.server, args.session, anahtar, args.monitor))
     elif args.nogui:
         run_cli_interactive()
     else:

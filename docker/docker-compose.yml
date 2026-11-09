@@ -2,7 +2,7 @@
 # Canlı kurulum bu sunucuda Docker Compose ile çalışır (/opt/nexmeet); bu dosya
 # yerel çalıştırma ve referans için o kurulumun karşılığıdır.
 #
-# Not: TTS servisi (nexmeet-tts) bu repoda değildir; ayrı olarak çalışır.
+# Not: TTS servisi (nexmeet-tts) ayrı çalışır; kaynağı tts-service/ altındadır.
 # Backend, TTS_SERVICE_URL / TTS_API_KEY ile ona bağlanır.
 #
 # Çalıştırma (repo kökünde .env hazırlandıktan sonra):

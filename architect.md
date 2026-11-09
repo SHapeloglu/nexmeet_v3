@@ -32,11 +32,11 @@ Kontrol edilecek bilgisayarda `agent.py` (Windows `.bat` / Linux `.sh` başlatı
 
 - Canlı yol Docker Compose; compose dizini sunucuda `/opt/nexmeet` (repo dışı).
 - Konteyner `nexmeet`: uvicorn, `127.0.0.1:8009`, ortam `nexmeet.env`, yüklemeler için `./uploads` volume, `restart unless-stopped`. İmaj `Dockerfile.nexmeet` ile üretilir (python:3.12-slim, `backend` ve `frontend` kopyalanır).
-- Konteyner `nexmeet-tts`: Kokoro ONNX TTS servisi, ortam `tts.env`, `restart unless-stopped`. İmaj `Dockerfile.tts` ile üretilir. Kaynağı yalnızca sunucuda; repoda yok.
+- Konteyner `nexmeet-tts`: Kokoro ONNX TTS servisi, ortam `tts.env`, `restart unless-stopped`. İmaj `Dockerfile.tts` ile üretilir. Kaynağı repoda: `tts-service/`.
 - Ağlar: `nexmeet` (dahili) ve dış `ortak-db`.
 - Sunucuda otomatik uyku (AutoSleep) mekanizması var; uygulama bu sistemin dışındadır ve yalnızca sunucu tarafında çalışır.
 - Eski systemd birimleri (`nexmeet.service`, `nexmeet-tts.service`) ve `/root/nexmeet` kaldırıldı (yedek sunucuda).
-- `docker/` klasörü canlı Docker kurulumunun yerel karşılığıdır (yalnız uygulama servisi; TTS repoda değil).
+- `docker/` klasörü canlı Docker kurulumunun yerel karşılığıdır (yalnız uygulama servisi; TTS kaynağı `tts-service/` altında).
 ## Mimari Kararlar
 
 - **P2P medya, sunucu sadece sinyalizasyon** — sunucu maliyeti düşük; çok katılımcıda tarayıcı yükü artar (SFU yok).

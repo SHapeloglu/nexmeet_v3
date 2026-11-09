@@ -4,7 +4,7 @@ WebRTC tabanlı video konferans: oda + katılımcı başına 1 saatlik join toke
 
 - GitHub: https://github.com/SHapeloglu/nexmeet_v3 — **PUBLIC repo**
 - **Canlı:** Docker Compose, sunucuda `/opt/nexmeet` (repo dışı). Konteynerler: `nexmeet` (uvicorn, `127.0.0.1:8009`, ortam `nexmeet.env`, yüklemeler `./uploads` volume) ve `nexmeet-tts` (ortam `tts.env`). İkisi de `restart unless-stopped`; ağlar: `nexmeet` ve dış `ortak-db`. Public adres nginx arkasında: `nexmeet.powerbiegitimi.com`. Sunucuda otomatik uyku (AutoSleep) mekanizması var.
-- TTS servisi: `nexmeet-tts` konteyneri (Kokoro ONNX, CPU). Backend `TTS_SERVICE_URL` / `TTS_API_KEY` ile çağırır. Kaynağı bu repoda değil, yalnızca sunucuda.
+- TTS servisi: `nexmeet-tts` konteyneri (Kokoro ONNX, CPU). Backend `TTS_SERVICE_URL` / `TTS_API_KEY` ile çağırır. Kaynağı `tts-service/` altında (model dosyaları repoda değil).
 - Eski systemd birimleri (`nexmeet.service`, `nexmeet-tts.service`) kaldırıldı.
 - Önceki sürümler: `nexmeet_v1` (05-14), `nexmeet_v2` (06-25) ve `nexmeet_v2-kokoro-tts-service` (GPU'lu EC2 tasarımı).
 - Mimari: `architect.md` · Görevler: `task.md` · Fikirler: `backlog.md` · Günlük: `session.md`
@@ -27,7 +27,7 @@ Ortam değişkenleri: `SECRET_KEY, ALLOWED_ORIGINS, MAX_FILE_SIZE_MB, UPLOADS_DI
 
 ## Kurallar ve Tuzaklar
 
-- **Dağıtım:** Canlı yol Docker'dır. `README.md` ve `architect.md` bunu anlatır; repodaki `docker/` klasörü canlı kurulumun yerel karşılığıdır (TTS hariç).
+- **Dağıtım:** Canlı yol Docker'dır. `README.md` ve `architect.md` bunu anlatır; repodaki `docker/` klasörü canlı kurulumun yerel karşılığıdır (TTS hariç; TTS kaynağı `tts-service/` altında).
 - Ses klonlama yok: TTS CPU'da Kokoro ONNX ile sabit `af_heart` sesiyle çalışır.
 - `backend/tts/` (torch + whisper, `/home/ubuntu/...` yolları) **kullanılmıyor** — `main.py` import etmiyor; EC2 tasarımından kalıntı. `backend/app.js` frontend `app.js`'in eski kopyası.
 - Ajan iki yerde: `agent/` (kaynak) ve `frontend/static/agent/` (kullanıcıya indirilen kopya) — ikisi farklı; ajan değişince indirilen kopyayı güncelle.

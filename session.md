@@ -87,3 +87,9 @@
 
 **Sıradaki adım:** Git geçmişi temizliği için karar; gerçek mail akışının elle denenmesi.
 
+**Ek kontrol (aynı gün, ikinci tur):**
+- `task.md` notu eski TURN parolasını düz metin olarak yeniden yazmıştı; PR #10 ile kaldırıldı. Ağaçta parola yok; yalnız git geçmişinde duruyor (geçmiş temizliği hâlâ onay bekliyor).
+- TTS kaynağı `tts-service/` altına taşındığı hâlde CLAUDE.md, README.md, architect.md ve `docker/docker-compose.yml` "repoda yok" diyordu; düzeltildi.
+- Yerel git deposunda kesinti sırasında 3 sıfır baytlık nesne dosyası ve bozuk bir uzak-izleme referansı oluştu. Dosyalarda veri yoktu; silinip uzaktan yeniden çekildi, `git fsck` temiz. Uzaktaki depo etkilenmedi.
+- Sunucu denetimi temiz: artık dizin/test konteyneri yok, iki yedek `gzip -t` ile sağlam, TTS anahtarı iki env'de eşleşiyor, env izinleri 600, nginx geçerli, sertifika 2027-01-04'e kadar geçerli.
+

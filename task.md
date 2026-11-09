@@ -3,7 +3,7 @@
 ## 🔜 Sıradaki
 
 - [ ] 🟠 **Üyelik canlı, gerçek mail gönderimi test edilmedi:** veritabanı bağlantısı canlı (`mysql-ortak:3306/nexmeet`). SMTP sunucusuna bağlantı, STARTTLS ve AUTH teklifi doğrulandı (2026-11-09, mail gönderilmedi). Kayıt/parola sıfırlama mailinin gerçekten ulaştığı tarayıcı/mail kutusunda henüz denenmedi.
-- [ ] 🔴 **Git geçmişinde kişisel veri ve eski TURN parolası:** özgeçmiş (telefon + e-posta) ve `***ETKISIZ-TURN-PAROLASI***` geçmişte duruyor. Temizlik için `git filter-repo` + force push gerekir; public repo olduğu için ayrıca onay istiyor. Karar bekliyor.
+- [ ] 🔴 **Git geçmişinde kişisel veri ve eski TURN parolası:** özgeçmiş (telefon + e-posta) ve eski TURN parolası geçmişte duruyor. Temizlik için `git filter-repo` + force push gerekir; public repo olduğu için ayrıca onay istiyor. Karar bekliyor.
 - [x] 2026-11-09 ✅ ~~**TURN fiilen yok**~~ — sabit kullanıcı/şifre `app.js`'ten kaldırıldı (PR #7); yalnız STUN kullanılıyor. Coturn kurulumu `backlog.md`'de.
 
 - [x] 2026-10-18 ✅ ~~**Uzak kontrol bozuk**~~ — kök neden: `/ws/{room_id}/{peer_id}` rotası `/ws/agent/{id}`'yi gölgeliyordu (ajan rotası öne alındı); ayrıca ajan artık oturuma özel tek kullanımlık `agent_key` ile bağlanıyor (hedef onayladıktan sonra, yalnız hedefe iletilir, arayüzde gösterilir); `.bat`/`.sh`/GUI `--key` alıyor, indirilen kopya `agent/` ile eşitlendi. Uçtan uca denendi (geçici portta). Commit edilmedi. (#64)

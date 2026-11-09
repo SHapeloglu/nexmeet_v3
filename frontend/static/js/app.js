@@ -47,27 +47,11 @@ const state = {
 };
 
 // ─── ICE Config ──────────────────────────────────────────────────────────────
-// TURN sunucusu: simetrik NAT'ın arkasındaki kullanıcılar için şart.
-// Ücretsiz test: coturn (kendi sunucunuz) veya Metered.ca / Twilio gibi sağlayıcılar.
-//TURN_URLS, TURN_USER, TURN_PASS değerlerini kendi sunucunuzla doldurun.
-// TURN bilgileri koddan okunur ve bu repo herkese açıktır; değerler bu yoruma yazılmadı.
-// DİKKAT: sabit TURN kullanıcı adı ve parolası kodda duruyor. Canlıda gizli tutulmalı, koddan çıkarılmalı.
-const TURN_URLS  = 'turn:nexmeet.powerbi.com.tr:3478';
-const TURN_USER  = 'nexmeet';
-const TURN_PASS  = '***ETKISIZ-TURN-PAROLASI***';
+// Yalnızca STUN. TURN sunucusu yok; simetrik NAT arkasındaki kullanıcılar bağlanamayabilir.
 const ICE_SERVERS = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
 ];
-
-// TURN_URLS boşsa TURN sunucusu eklenmez; yalnızca STUN kullanılır. STUN, kullanıcının dış IP adresini öğrenmesini sağlar.
-if (TURN_URLS) {
-  ICE_SERVERS.push({
-    urls:       TURN_URLS,
-    username:   TURN_USER,
-    credential: TURN_PASS,
-  });
-}
 
 const ICE_CONFIG = { iceServers: ICE_SERVERS };
 

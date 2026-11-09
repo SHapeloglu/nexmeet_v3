@@ -881,6 +881,19 @@ body {
   cursor: pointer;
 }
 .btn-ikincil:disabled { opacity: 0.6; }
+/* Hesabım: tehlikeli işlem (hesap silme) bölümü */
+.hesap-sil { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; padding-top: 20px; border-top: 1px solid var(--border); }
+.hesap-sil h2 { font-family: 'Syne', sans-serif; font-size: 17px; color: var(--danger); }
+.hesap-onay { flex-direction: row !important; align-items: center; gap: 10px !important; color: var(--text) !important; }
+.hesap-onay input[type="checkbox"] { width: auto; padding: 0; accent-color: var(--danger); }
+.btn-tehlike {
+  background: var(--danger); color: #fff; border: none;
+  border-radius: 12px; padding: 12px 18px;
+  font-family: 'Syne', sans-serif; font-weight: 600; font-size: 15px;
+  cursor: pointer;
+}
+.btn-tehlike:hover:not(:disabled) { box-shadow: 0 6px 20px rgba(248,113,113,0.35); }
+.btn-tehlike:disabled { opacity: 0.45; cursor: not-allowed; }
 /* Üyelik mesaj kutusu: hata, başarı veya uyarı durumuna göre sınıf eklenir. */
 .auth-mesaj {
   margin: 0; padding: 10px 14px;
@@ -902,8 +915,9 @@ body {
   font-size: 14px; color: var(--text-muted);
 }
 .kullanici-cubugu strong { color: var(--text); }
-/* Çıkış düğmesi: link gibi görünür (zeminsiz, alt çizgili, yeşil). */
-.kullanici-cubugu button {
+/* Çıkış düğmesi ve Hesabım bağlantısı: link gibi görünür (zeminsiz, alt çizgili, yeşil). */
+.kullanici-cubugu button,
+.kullanici-cubugu a {
   background: none; border: none; color: var(--accent);
   font-family: 'DM Sans', sans-serif; font-size: 14px;
   cursor: pointer; padding: 0; text-decoration: underline;

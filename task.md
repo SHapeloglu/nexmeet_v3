@@ -17,8 +17,17 @@
 - [x] 2026-10-18 ✅ ~~README güncel değil~~ — yukarıdakiyle kapandı.
 - [x] 2026-10-18 ✅ ~~Public repodan `uploads/` dosyaları çıkarıldı~~ (`git rm --cached`). ⚠ Biri kullanıcının özgeçmişi (telefon + e-posta); **git geçmişinde hâlâ duruyor** — geçmişi temizlemek (filter-repo + force push) ayrı karar. Dosyalar diskte duruyor, servis ilk açılışta silecek.
 - [x] 2026-10-18 ✅ ~~README yeniden yazıldı~~ (canlı mimari, IP'ler çıkarıldı, ajan anahtarı, 50 MB, TTL); `requirements.txt`'e eksik `slowapi`/`httpx`/`python-dotenv` eklendi.
-- [ ] Kullanılmayan kodu temizle: `backend/tts/`, `backend/app.js`, `docker/backend/` (veya Docker'ı güncelle), `backend/__pycache__`
-- [ ] `nexmeet-tts.service` içindeki zayıf `API_KEY`'i güçlü bir değerle değiştir ve backend `.env` `TTS_API_KEY` ile eşle (unit yerine `EnvironmentFile`)
+- [ ] Kullanılmayan kodu temizle: `backend/tts/`, `backend/app.js`, `backend/__pycache__` (`docker/backend/` kaldırıldı, bkz. `cleanup/docker-backend-kaldir`)
+- [ ] Sunucudaki TTS API anahtarı zayıf: güçlü bir değerle değiştir; `nexmeet.env` `TTS_API_KEY` ile `tts.env` aynı olmalı (eski `nexmeet-tts.service` unit'i değil)
+
+## 🚀 Dağıtım — Açık İşler
+
+Canlı dağıtım Docker Compose (`/opt/nexmeet`); repo ile sunucu arasındaki farklar burada takip edilir.
+
+- [ ] (a) Sunucudaki düzeltmeyi GitHub'a push et — kullanıcı onayından sonra (commit/push henüz yapılmadı)
+- [ ] (b) TTS servisi kaynağını repoya ekleme kararı (şu an yalnızca sunucuda)
+- [ ] (c) Üyelik veritabanı bağlantısını doğrula (canlı MySQL erişimi)
+- [x] (d) Eski systemd birimleri kaldırıldı: `nexmeet.service`, `nexmeet-tts.service`, `/root/nexmeet` (yedek sunucuda)
 
 ## 🚧 Devam Eden
 

@@ -1,25 +1,51 @@
+/**
+ * Üyelik sayfalarının (giriş, kayıt, e-posta doğrulama, şifremi unuttum, şifre sıfırlama) ortak tarayıcı betiği.
+ * HTML sayfası hangi formu içeriyorsa ilgili bölüm çalışır; formu bulamazsa o bölüm atlanır.
+ * Tüm istekler /api/auth/... adreslerine POST ile gider ve cevap istek() fonksiyonuyla okunur.
+ * Bu dosya bir IIFE (kendini çağıran fonksiyon) içindedir; değişkenler dış dünyaya açılmaz.
+ */
 /* NexMeet — üyelik sayfaları ortak betiği (giriş, kayıt, doğrulama, parola sıfırlama). */
 
 (function () {
   'use strict';
 
   // Sunucudaki YONLENDIRME_RE ile aynı kural: yalnız "/" veya "/room/<id>"
+  // Sunucudaki YONLENDIRME_RE ile aynı kural. Yalnızca '/' ya da '/room/<kod>' kabul edilir; bu sayede giriş sonrası başka bir siteye yönlendirme yapılamaz (açık yönlendirme koruması).
   const YONLENDIRME_RE = /^\/(room\/[^/\\?#%\s\x00-\x1f\x7f]{1,64})?$/;
 
+  /**
+   * Giriş sonrası gidilecek adresi güvenli hale getirir.
+   * ham geçerli değilse (boş ya da kurala uymuyorsa) ana sayfa '/' döner.
+   * ham: sunucudan gelen veya URL'deki yönlendirme adresi.
+   */
   function guvenliYonlendirme(ham) {
     return ham && YONLENDIRME_RE.test(ham) ? ham : '/';
   }
 
+  /**
+   * Sayfa adresindeki (?ad=deger) sorgu parametresinin değerini döndürür. Parametre yoksa null döner.
+   * ad: parametre adı (ör. 'token' veya 'next').
+   */
   function parametre(ad) {
     return new URLSearchParams(location.search).get(ad);
   }
 
+  /**
+   * Sayfadaki mesaj kutusuna metin yazar ve rengini belirler.
+   * tur: 'hata' (varsayılan), 'basari' veya 'uyari'. metin boşsa kutu gizlenir.
+   * Düz metin olarak yazılır (textContent), bu yüzden HTML yorumlanmaz.
+   */
   function bildir(el, metin, tur) {
     el.textContent = metin || '';
     el.className = 'auth-mesaj ' + (tur || 'hata');
     el.hidden = !metin;
   }
 
+  /**
+   * Sunucuya JSON gövdeli POST isteği gönderir ve cevabı ortak bir biçimde döndürür: { ok, durum, mesaj, veri }.
+   * Ağ hatasında durum 0 döner. 429 (çok fazla istek) ve 503 (servis kapalı) için sabit Türkçe mesajlar kullanılır.
+   * url: istek adresi; govde: gönderilecek nesne (boşsa {} gider).
+   */
   async function istek(url, govde) {
     let res;
     try {

@@ -1,3 +1,10 @@
+/**
+ * NexMeet tarayıcı tarafı: WebRTC ile görüntülü toplantı arayüzü.
+ * Bu dosya index.html içinde /static/js/app.js olarak yüklenir.
+ * Akış: lobi -> joinMeeting (sunucudan join token alınır) -> WebSocket ile sinyalleşme (offer, answer, ICE) -> RTCPeerConnection ile kişiler arası doğrudan medya.
+ * Sunucu tarafı (token üretimi, WebSocket yönlendirme) backend klasöründedir; bu dosya yalnızca tarayıcıda çalışır.
+ * Tüm anlık durum en üstteki state nesnesinde tutulur. Uzak masaüstü kontrolü ve anlık çeviri (TTS) bölümleri dosyanın alt kısmındadır.
+ */
 /* ─── NexMeet — WebRTC Video Conference ─── */
 
 'use strict';
@@ -43,6 +50,8 @@ const state = {
 // TURN sunucusu: simetrik NAT'ın arkasındaki kullanıcılar için şart.
 // Ücretsiz test: coturn (kendi sunucunuz) veya Metered.ca / Twilio gibi sağlayıcılar.
 //TURN_URLS, TURN_USER, TURN_PASS değerlerini kendi sunucunuzla doldurun.
+// TURN bilgileri koddan okunur ve bu repo herkese açıktır; değerler bu yoruma yazılmadı.
+// DİKKAT: sabit TURN kullanıcı adı ve parolası kodda duruyor. Canlıda gizli tutulmalı, koddan çıkarılmalı.
 const TURN_URLS  = 'turn:nexmeet.powerbi.com.tr:3478';
 const TURN_USER  = 'nexmeet';
 const TURN_PASS  = 'nexmeet123';
@@ -51,6 +60,7 @@ const ICE_SERVERS = [
   { urls: 'stun:stun1.l.google.com:19302' },
 ];
 
+// TURN_URLS boşsa TURN sunucusu eklenmez; yalnızca STUN kullanılır. STUN, kullanıcının dış IP adresini öğrenmesini sağlar.
 if (TURN_URLS) {
   ICE_SERVERS.push({
     urls:       TURN_URLS,
@@ -61,6 +71,11 @@ if (TURN_URLS) {
 
 const ICE_CONFIG = { iceServers: ICE_SERVERS };
 
+/**
+ * Lobi ekranında uyarı kutusu gösterir (ör. HTTPS gerektiren kamera hatası).
+ * Kutu ilk kez oluşturulur, sonra mevcut kutunun içeriği değiştirilir.
+ * msg HTML olarak basılır; bu yüzden içine dışarıdan gelen metin koymayın.
+ */
 function showLobbyWarning(msg) {
   let el = document.getElementById('lobbyWarning');
   if (!el) {
@@ -73,6 +88,11 @@ function showLobbyWarning(msg) {
 }
 
 // ─── Lobby ───────────────────────────────────────────────────────────────────
+/**
+ * Lobi ekranını hazırlar: kamera ve mikrofon önizlemesini açar (izin yoksa uyarı verir), düğmelerin ve Enter tuşunun olaylarını bağlar.
+ * Oda kodu kutusunu /room/<kod> adresinden otomatik doldurur.
+ * Oturum doğrulanınca ve toplantıdan çıkılınca çağrılır.
+ */
 async function initLobby() {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
@@ -106,6 +126,7 @@ async function initLobby() {
   document.getElementById('roomInput').addEventListener('keydown', e => {
     if (e.key === 'Enter') joinMeeting();
   });
+  // /room/<kod> bağlantısıyla gelindiyse oda kodu kutusu otomatik dolar. Kod 20 karakterle sınırlanır.
   // Oda bağlantısıyla gelindiyse (/room/<id>) kodu önceden doldur
   const odaYolu = location.pathname.match(/^\/room\/(.+)$/);
   if (odaYolu && !document.getElementById('roomInput').value) {
@@ -116,6 +137,10 @@ async function initLobby() {
 }
 
 // ─── Üyelik: oturum kontrolü ─────────────────────────────────────────────────
+/**
+ * Giriş sayfasının adresini üretir. Giriş sonrası dönülecek sayfa (next) olarak şu anki adres eklenir.
+ * Döner: '/giris?next=...' biçiminde metin.
+ */
 function girisAdresi() {
   return '/giris?' + new URLSearchParams({ next: location.pathname || '/' }).toString();
 }
@@ -151,6 +176,12 @@ async function oturumYukle() {
   return true;
 }
 
+/**
+ * Lobiden 'Katıl' denince çalışır: kamera ve mikrofonu açar, sunucudan join token alır ve toplantı ekranına geçer.
+ * Kamera ve mikrofon alınamazsa önce görüntülü, sonra yalnızca sesli dener; ikisi de olmazsa boş akışla devam eder.
+ * Oda kodu boşsa rastgele 8 karakterlik kod üretilir.
+ * Oturum yoksa girişe yönlendirir. Token alınamazsa toplantıya girilmez.
+ */
 async function joinMeeting() {
   const roomInput = document.getElementById('roomInput').value.trim();
 
@@ -209,6 +240,10 @@ async function joinMeeting() {
 }
 
 // ─── Meeting UI ──────────────────────────────────────────────────────────────
+/**
+ * Toplantı ekranı açılınca düğmeleri bağlar, kendi kutumuzu ekler, uzak kontrol düğmelerini hazırlar ve süre sayacını başlatır.
+ * joinMeeting içinde, sunucudan token alındıktan sonra çağrılır.
+ */
 function initMeetingUI() {
   document.getElementById('roomIdDisplay').textContent = state.roomId;
 
@@ -243,6 +278,10 @@ function initMeetingUI() {
   state.timerInterval = setInterval(updateTimer, 1000);
 }
 
+/**
+ * Toplantı süresini her saniye HH:MM:SS biçiminde üst çubuğa yazar.
+ * Süre, meetingStartTime alanından hesaplanır; bu yüzden sekme arka planda kalsa bile doğru kalır.
+ */
 function updateTimer() {
   const elapsed = Math.floor((Date.now() - state.meetingStartTime) / 1000);
   const h = String(Math.floor(elapsed / 3600)).padStart(2, '0');
@@ -252,6 +291,12 @@ function updateTimer() {
 }
 
 // ─── WebSocket Signaling ─────────────────────────────────────────────────────
+/**
+ * Sinyalleşme sunucusuna WebSocket bağlantısı kurar. Bağlantı koparsa 2, 4, 8 ve 16 saniye arayla en fazla wsReconnectMax kez yeniden dener.
+ * Kapanma kodu 4001 veya 4003 ise (token geçersiz / yetkisiz) yeniden denemez.
+ * Kod 1000 ise (kasıtlı çıkış) yeniden denemez.
+ * Gelen her mesaj handleSignal ile işlenir.
+ */
 function connectWebSocket() {
   if (state.wsReconnectAttempts >= state.wsReconnectMax) {
     showToast('Sunucu bağlantısı kurulamadı. Sayfayı yenileyin.');
@@ -259,6 +304,7 @@ function connectWebSocket() {
   }
 
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  // DİKKAT: join token WebSocket adresinde sorgu parametresi olarak gider; sunucu erişim günlüklerine düşebilir.
   const url = `${proto}://${location.host}/ws/${state.roomId}/${state.peerId}?token=${encodeURIComponent(state.joinToken)}`;
   state.ws = new WebSocket(url);
 
@@ -298,6 +344,11 @@ function connectWebSocket() {
   };
 }
 
+/**
+ * Sunucuya WebSocket üzerinden JSON mesaj gönderir.
+ * Socket açık değilse mesaj gönderilmez, yalnızca konsola uyarı yazılır (hata fırlatmaz).
+ * data: type alanı olan bir nesne (ör. { type: 'chat', message }).
+ */
 function sendSignal(data) {
   if (state.ws && state.ws.readyState === WebSocket.OPEN) {
     state.ws.send(JSON.stringify(data));
@@ -306,6 +357,12 @@ function sendSignal(data) {
   }
 }
 
+/**
+ * Sunucudan gelen her WebSocket mesajını türüne göre işler (switch).
+ * Başlıca türler: room-joined ve peer-joined (kişi bağlantıları), offer, answer, ice-candidate (WebRTC sinyalleri), peer-left, chat, file-shared, media-state (mikrofon/kamera), screen-share-*, control-* ve remote-* (uzak kontrol), tts-audio (çeviri sesi).
+ * Bilinmeyen tür sessizce yok sayılır.
+ * Hata olursa çağıran (onmessage) yakalar ve konsola yazar.
+ */
 async function handleSignal(msg) {
   const { type, from, from_name } = msg;
 
@@ -380,7 +437,8 @@ async function handleSignal(msg) {
       break;
     }
     case 'recording-stopped': {
-      showToast(`${msg.from} kaydı durdurdu`);
+      // Bildirimde kullanıcı adı (from_name) gösterilir; yoksa kimlik (from) yedek olarak kullanılır.
+      showToast(`${msg.from_name || msg.from} kaydı durdurdu`);
       break;
     }
     case 'file-shared': {
@@ -414,6 +472,12 @@ async function handleSignal(msg) {
 }
 
 // ─── WebRTC Peer Connections ─────────────────────────────────────────────────
+/**
+ * Bir kişiyle WebRTC bağlantısı (RTCPeerConnection) kurar. Yerel parçaları ekler, ICE adaylarını ve gelen videoyu bağlar.
+ * initiator true ise teklifi (offer) bu taraf gönderir; false ise karşı taraftan teklif bekler.
+ * Bağlantı failed veya disconnected olursa kişi kaldırılır.
+ * Döner: RTCPeerConnection nesnesi.
+ */
 async function createPeerConnection(peerId, peerName, initiator) {
   const pc = new RTCPeerConnection(ICE_CONFIG);
   state.peers[peerId] = { pc, name: peerName, audioEnabled: true, videoEnabled: true };
@@ -460,6 +524,11 @@ async function createPeerConnection(peerId, peerName, initiator) {
   return pc;
 }
 
+/**
+ * Karşı tarafın offer (teklif) mesajını işler.
+ * O kişi için bağlantı yoksa önce oluşturur; uzak açıklamayı (SDP) kaydeder, answer (cevap) üretip geri gönderir.
+ * fromId: teklifi gönderen kişinin kimliği; msg.sdp: teklif metni.
+ */
 async function handleOffer(fromId, fromName, msg) {
   if (!state.peers[fromId]) {
     await createPeerConnection(fromId, fromName, false);
@@ -471,6 +540,10 @@ async function handleOffer(fromId, fromName, msg) {
   sendSignal({ type: 'answer', target: fromId, sdp: pc.localDescription });
 }
 
+/**
+ * Karşı tarafın answer (cevap) mesajını işler: uzak açıklamayı (SDP) kaydeder.
+ * Bu kişi için bağlantı yoksa hiçbir şey yapmaz.
+ */
 async function handleAnswer(fromId, msg) {
   const peer = state.peers[fromId];
   if (peer) {
@@ -478,6 +551,10 @@ async function handleAnswer(fromId, msg) {
   }
 }
 
+/**
+ * Karşı tarafın ICE adayını ekler. ICE adayı, iki tarayıcının birbirine ulaşabileceği ağ adresidir.
+ * Aday hatalıysa veya bağlantı yoksa sessizce atlanır, uyarı konsola yazılır.
+ */
 async function handleIceCandidate(fromId, msg) {
   const peer = state.peers[fromId];
   if (peer && msg.candidate) {
@@ -489,6 +566,10 @@ async function handleIceCandidate(fromId, msg) {
   }
 }
 
+/**
+ * Bir kişiyi toplantıdan çıkarır: bağlantıyı kapatır, state.peers kaydını siler, video kutusunu kaldırır ve sayıları günceller.
+ * Bağlantı yoksa bile kutu varsa kaldırılır.
+ */
 function removePeer(peerId) {
   if (state.peers[peerId]) {
     state.peers[peerId].pc.close();
@@ -501,6 +582,12 @@ function removePeer(peerId) {
 }
 
 // ─── Video Grid ──────────────────────────────────────────────────────────────
+/**
+ * Bir kişi için video kutusu oluşturur: video, kamera kapalıyken avatar, isim etiketi ve sabitleme düğmesi.
+ * Kendi kutumuz (isLocal) sessize alınır; kendi sesimizi duymayalım diye.
+ * Konuşma algılama için ses seviyesi analizi başlatılır.
+ * stream: video ve ses akışı; name: görünen ad; isLocal: kendi kutumuz mu.
+ */
 function addVideoTile(peerId, stream, name, isLocal) {
   const grid = document.getElementById('videoGrid');
   const existing = document.getElementById(`tile-${peerId}`);
@@ -528,7 +615,10 @@ function addVideoTile(peerId, stream, name, isLocal) {
   // Name label
   const label = document.createElement('div');
   label.className = 'tile-name';
-  label.innerHTML = `<span>${name}</span>`;
+  // Ad HTML olarak değil metin olarak basılır (XSS koruması).
+  const nameSpan = document.createElement('span');
+  nameSpan.textContent = name;
+  label.appendChild(nameSpan);
   label.id = `name-${peerId}`;
 
   tile.appendChild(video);
@@ -566,6 +656,11 @@ function addVideoTile(peerId, stream, name, isLocal) {
   updateGrid();
 }
 
+/**
+ * Video kutularını (tile) ekran düzenine göre yerleştirir.
+ * Bir kişi sabitlenmişse (pin) veya konuşan kişi otomatik sabitleniyorsa o kutu büyük alana alınır, diğerleri kenar çubuğuna geçer.
+ * Sabit yoksa veya tek kişiyse fallbackGrid ile eşit ızgara kullanılır.
+ */
 function updateGrid() {
   const grid = document.getElementById('videoGrid');
   const allTiles = Array.from(grid.querySelectorAll('.video-tile:not(.sidebar-tiles .video-tile)'));
@@ -616,6 +711,10 @@ function updateGrid() {
   }
 }
 
+/**
+ * Kenar çubuğu varsa kutuları ana alana geri taşıyıp kaldırır, ardından kutu sayısına göre (count-1 ... count-many) düzen sınıfını ayarlar.
+ * grid: video ızgarası; allTiles: tüm kutular; count: kutu sayısı.
+ */
 function fallbackGrid(grid, allTiles, count) {
   // Sidebar varsa temizle
   const sidebar = grid.querySelector('.sidebar-tiles');
@@ -633,6 +732,11 @@ function fallbackGrid(grid, allTiles, count) {
   else grid.classList.add('count-many');
 }
 
+/**
+ * Bir kişiyi sabitler veya sabitlemeyi kaldırır (pin). Aynı kişiye tekrar basılırsa sabit kalkar.
+ * Elle sabitleme yapılınca otomatik konuşmacı sabitleme kapanır.
+ * peerId: sabitlenecek kişinin kimliği.
+ */
 function togglePin(peerId) {
   if (state.pinnedPeerId === peerId) {
     state.pinnedPeerId = null;
@@ -645,6 +749,10 @@ function togglePin(peerId) {
   updateGrid();
 }
 
+/**
+ * Konuşan kişiyi kaydeder ve gerekiyorsa düzeni yeniden çizer.
+ * Kendi kutumuz için işlem yapılmaz; aynı kişi tekrar konuşursa boşuna çizim yapılmaz.
+ */
 function setSpeaking(peerId) {
   // Kendi ekranında otomatik pin olmasın
   if (peerId === state.peerId) return;
@@ -655,6 +763,11 @@ function setSpeaking(peerId) {
   }
 }
 
+/**
+ * Uzak kişinin mikrofon ve kamera durumunu kutuya yansıtır.
+ * Kamera kapalıysa avatar gösterilir; mikrofon kapalıysa isme sessiz simgesi eklenir.
+ * videoEnabled / audioEnabled false ise kapalı kabul edilir. Kutu yoksa hiçbir şey yapmaz.
+ */
 function updateRemoteMediaState(peerId, audioEnabled, videoEnabled) {
   const tile = document.getElementById(`tile-${peerId}`);
   if (!tile) return;
@@ -679,6 +792,9 @@ function updateRemoteMediaState(peerId, audioEnabled, videoEnabled) {
   }
 }
 
+/**
+ * Bir kişinin kutusuna ekran paylaşımı işaretini ekler (active true) ya da kaldırır (false).
+ */
 function markTileScreenShare(peerId, active) {
   const tile = document.getElementById(`tile-${peerId}`);
   if (!tile) return;
@@ -686,6 +802,9 @@ function markTileScreenShare(peerId, active) {
 }
 
 // ─── Controls ────────────────────────────────────────────────────────────────
+/**
+ * Mikrofonu açar veya kapatır, düğmenin görünümünü günceller ve yeni durumu diğer kişilere bildirir.
+ */
 function toggleMic() {
   state.micEnabled = !state.micEnabled;
   state.localStream?.getAudioTracks().forEach(t => t.enabled = state.micEnabled);
@@ -693,6 +812,9 @@ function toggleMic() {
   broadcastMediaState();
 }
 
+/**
+ * Mikrofon düğmesinin görünümünü (aktif rengi ve üstü çizgisi) state.micEnabled değerine göre günceller.
+ */
 function updateMicBtn() {
   const btn = document.getElementById('micBtn');
   const slash = document.getElementById('micOff');
@@ -700,6 +822,10 @@ function updateMicBtn() {
   slash.style.display = state.micEnabled ? 'none' : 'block';
 }
 
+/**
+ * Kamerayı açar veya kapatır. Yerel parçanın enabled değeri değişir, düğme ve kendi kutumuz güncellenir.
+ * Durum diğer kişilere media-state mesajıyla bildirilir.
+ */
 function toggleCam() {
   state.camEnabled = !state.camEnabled;
   state.localStream?.getVideoTracks().forEach(t => t.enabled = state.camEnabled);
@@ -714,6 +840,9 @@ function toggleCam() {
   }
 }
 
+/**
+ * Kamera düğmesinin görünümünü state.camEnabled değerine göre günceller.
+ */
 function updateCamBtn() {
   const btn = document.getElementById('camBtn');
   const slash = document.getElementById('camOff');
@@ -721,10 +850,18 @@ function updateCamBtn() {
   slash.style.display = state.camEnabled ? 'none' : 'block';
 }
 
+/**
+ * Mikrofon ve kamera durumunu tüm kişilere media-state mesajıyla gönderir. Karşı taraf kutusundaki simgeleri bu mesajla günceller.
+ */
 function broadcastMediaState() {
   sendSignal({ type: 'media-state', audio: state.micEnabled, video: state.camEnabled });
 }
 
+/**
+ * Ekran paylaşımını başlatır veya durdurur.
+ * Başlatırken tarayıcının ekran seçme penceresi açılır; seçilen görüntü, her bağlantıdaki video göndericisinin parçası (track) yerine konur.
+ * Kullanıcı pencereyi iptal ederse (NotAllowedError) sessizce çıkılır.
+ */
 async function toggleScreen() {
   if (!state.screenSharing) {
     try {
@@ -768,6 +905,10 @@ async function toggleScreen() {
   }
 }
 
+/**
+ * Ekran paylaşımını durdurur: ekran akışını kapatır, kamera parçasını tüm bağlantılara geri koyar ve kendi kutumuzu eski haline döndürür.
+ * Not: ekran paylaşımı tarayıcının kendi 'Paylaşımı durdur' düğmesiyle de bitebilir; o durumda da bu fonksiyon çağrılır.
+ */
 function stopScreenShare() {
   if (!state.screenSharing) return;
   state.screenSharing = false;
@@ -799,6 +940,9 @@ function stopScreenShare() {
 }
 
 // ─── Recording ───────────────────────────────────────────────────────────────
+/**
+ * Kayıt düğmesi: kayıt yoksa başlatır, varsa durdurur.
+ */
 async function toggleRecording() {
   if (!state.recording) {
     await startRecording();
@@ -807,6 +951,11 @@ async function toggleRecording() {
   }
 }
 
+/**
+ * Toplantı görüntüsünü kayıt altına alır.
+ * Katılımcı videoları 1280x720 bir tuvale (canvas) her karede çizilir, tuval görüntüsü ve yerel ses MediaRecorder ile WebM olarak kaydedilir.
+ * Kayıt bittiğinde downloadRecording dosyayı indirir. Tarayıcı MediaRecorder desteklemezse hata mesajı gösterilir.
+ */
 async function startRecording() {
   try {
     // Capture the full meeting view via canvas
@@ -817,6 +966,10 @@ async function startRecording() {
     const videoEls = document.querySelectorAll('.video-tile video');
     const count = videoEls.length;
 
+    /**
+     * Kayıt sırasında her karede çağrılır (requestAnimationFrame). Videoları ızgara halinde tuvale çizer, sonra bir sonraki kareyi planlar.
+     * Kayıt durunca kendini durdurur.
+     */
     const drawFrame = () => {
       if (!state.recording) return;
       ctx.fillStyle = '#0a0a0f';
@@ -873,6 +1026,9 @@ async function startRecording() {
   }
 }
 
+/**
+ * Kaydı durdurur. MediaRecorder durunca onstop olayı downloadRecording'i çağırıp dosyayı indirir.
+ */
 function stopRecording() {
   state.recording = false;
   state.mediaRecorder?.stop();
@@ -882,6 +1038,9 @@ function stopRecording() {
   showToast('Kayıt durdu, indiriliyor...');
 }
 
+/**
+ * Kayıt parçalarını tek WebM dosyasına birleştirip tarayıcıya indirir. Dosya adına oda kodu ve zaman damgası eklenir.
+ */
 function downloadRecording() {
   const blob = new Blob(state.recordedChunks, { type: 'video/webm' });
   const url = URL.createObjectURL(blob);
@@ -894,6 +1053,10 @@ function downloadRecording() {
 }
 
 // ─── Chat ────────────────────────────────────────────────────────────────────
+/**
+ * Sohbet panelini açar veya kapatır.
+ * Açılınca okunmamış mesaj sayısını sıfırlar ve yazı kutusuna odaklanır. Dosya paneli açıksa onu kapatır.
+ */
 function toggleChat() {
   state.chatOpen = !state.chatOpen;
   document.getElementById('chatPanel').classList.toggle('open', state.chatOpen);
@@ -907,6 +1070,10 @@ function toggleChat() {
   }
 }
 
+/**
+ * Sohbet kutusundaki mesajı gönderir. Boş mesaj gönderilmez.
+ * Mesaj önce sunucuya chat türüyle gider, sonra kendi ekranımıza da eklenir (sunucu kendi mesajımızı geri göndermez).
+ */
 function sendChat() {
   const input = document.getElementById('chatInput');
   const msg = input.value.trim();
@@ -920,6 +1087,9 @@ function sendChat() {
   appendChatMessage({ from: state.peerId, from_name: state.userName, message: msg, timestamp }, true);
 }
 
+/**
+ * Başkasından gelen sohbet mesajını ekler. Sohbet paneli kapalıysa okunmamış sayısını artırır ve kısa bildirim gösterir.
+ */
 function receiveChatMessage(msg) {
   appendChatMessage(msg, false);
   if (!state.chatOpen) {
@@ -931,12 +1101,17 @@ function receiveChatMessage(msg) {
   }
 }
 
+/**
+ * Sohbet paneline bir mesaj balonu ekler. isOwn true ise mesaj 'Sen' olarak görünür.
+ * Mesaj metni escapeHtml ile kaçırılır, bu XSS (sayfaya kod enjeksiyonu) riskini azaltır.
+ * DİKKAT: kullanıcı adı (from_name) kaçırılmadan basılır; ad HTML içeriyorsa risk oluşur.
+ */
 function appendChatMessage(msg, isOwn) {
   const container = document.getElementById('chatMessages');
   const div = document.createElement('div');
   div.className = `chat-msg${isOwn ? ' own' : ''}`;
   div.innerHTML = `
-    <div class="chat-msg-name">${isOwn ? 'Sen' : msg.from_name}</div>
+    <div class="chat-msg-name">${isOwn ? 'Sen' : escapeHtml(String(msg.from_name ?? ''))}</div>
     <div class="chat-msg-bubble">${escapeHtml(msg.message)}</div>
     <div class="chat-msg-time">${msg.timestamp || ''}</div>
   `;
@@ -944,6 +1119,9 @@ function appendChatMessage(msg, isOwn) {
   container.scrollTop = container.scrollHeight;
 }
 
+/**
+ * Sohbete sistem mesajı ekler (ör. 'X toplantıya katıldı'). textContent kullanıldığı için metin HTML olarak yorumlanmaz.
+ */
 function addSystemMessage(text) {
   const container = document.getElementById('chatMessages');
   const div = document.createElement('div');
@@ -957,6 +1135,9 @@ function addSystemMessage(text) {
 let filesOpen = false;
 let unreadFiles = 0;
 
+/**
+ * Dosya panelini açar veya kapatır. Açılırsa okunmamış sayısını sıfırlar, sohbet paneli açıksa onu kapatır ve dosya bırakma alanını hazırlar.
+ */
 function toggleFiles() {
   filesOpen = !filesOpen;
   document.getElementById('filesPanel').classList.toggle('open', filesOpen);
@@ -970,6 +1151,10 @@ function toggleFiles() {
   }
 }
 
+/**
+ * Dosya bırakma alanına tıklama, dosya seçme ve sürükle-bırak olaylarını bağlar.
+ * dataset.init işaretiyle olayları yalnızca bir kez bağlar; panel her açıldığında tekrar bağlanmaz.
+ */
 function initFileDropZone() {
   const zone = document.getElementById('fileDropZone');
   if (zone.dataset.init) return;
@@ -990,6 +1175,10 @@ function initFileDropZone() {
   });
 }
 
+/**
+ * Seçilen dosyaları sırayla yükler. 100 MB'tan büyük dosyalar atlanır ve kullanıcıya bildirilir.
+ * files: dosya listesi (File nesnelerinin dizisi).
+ */
 async function handleFiles(files) {
   for (const file of files) {
     if (file.size > 100 * 1024 * 1024) {
@@ -1000,6 +1189,11 @@ async function handleFiles(files) {
   }
 }
 
+/**
+ * Tek bir dosyayı XMLHttpRequest ile odaya yükler ve yükleme yüzdesini gösterir.
+ * Başarılıysa dosya kendi listemize eklenir; diğer kişilere sunucu file-shared mesajıyla bildirir.
+ * Hata durumunda kullanıcıya mesaj gösterilir. Promise her durumda tamamlanır (çözülür), böylece sıradaki dosya beklemez.
+ */
 async function uploadFile(file) {
   const zone = document.getElementById('fileDropZone');
   const dropContent = document.getElementById('dropContent');
@@ -1034,6 +1228,7 @@ async function uploadFile(file) {
       progressWrap.style.display = 'none';
       dropContent.style.display = 'flex';
       if (xhr.status === 200) {
+        // Sunucu cevabı geçerli JSON değilse bu satır hata verir ve dosya listesi güncellenmez. Yanıt kontrolü yoktur.
         const data = JSON.parse(xhr.responseText);
         // Show own upload immediately
         appendFileItem({
@@ -1063,6 +1258,9 @@ async function uploadFile(file) {
   });
 }
 
+/**
+ * Başkasının paylaştığı dosyayı listeye ekler, panel kapalıysa okunmamış sayısını artırır ve bildirim gösterir.
+ */
 function receiveFileNotification(msg) {
   appendFileItem({ ...msg, own: false });
 
@@ -1076,6 +1274,10 @@ function receiveFileNotification(msg) {
   showToast(`📎 ${msg.uploader}: "${msg.name}" paylaştı`);
 }
 
+/**
+ * Dosya listesinin en üstüne bir satır ekler: ikon, ad, boyut, gönderen, saat ve indirme bağlantısı.
+ * Ad ve gönderen HTML olarak basılmadan önce escapeHtml ile kaçırılır.
+ */
 function appendFileItem(file) {
   const list = document.getElementById('filesList');
   const sizeStr = formatBytes(file.size);
@@ -1094,6 +1296,9 @@ function appendFileItem(file) {
   list.prepend(item);
 }
 
+/**
+ * Dosyanın MIME türüne ve uzantısına göre bir emoji ikonu seçer. Tanınmayan dosyalar için kağıt klip simgesi kullanılır.
+ */
 function getFileIcon(mime, name) {
   const ext = name.split('.').pop().toLowerCase();
   if (mime?.startsWith('image/')) return '🖼️';
@@ -1108,6 +1313,9 @@ function getFileIcon(mime, name) {
   return '📎';
 }
 
+/**
+ * Bayt sayısını okunabilir metne çevirir (ör. 1536 -> '1.5 KB'). 1024 tabanlı hesaplanır.
+ */
 function formatBytes(bytes) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -1115,6 +1323,10 @@ function formatBytes(bytes) {
 }
 
 // ─── Leave ───────────────────────────────────────────────────────────────────
+/**
+ * Toplantıdan çıkar: kayıt, ekran paylaşımı ve uzak kontrol varsa durdurur.
+ * WebSocket'i kasıtlı olarak kapatır (kod 1000, yeniden bağlanma olmaz), tüm bağlantıları ve medya akışlarını kapatır, sonra lobiye döner.
+ */
 function leaveMeeting() {
   if (state.recording) stopRecording();
   if (state.screenSharing) stopScreenShare();
@@ -1160,23 +1372,37 @@ function leaveMeeting() {
 }
 
 // ─── Utilities ───────────────────────────────────────────────────────────────
+/**
+ * Verilen kimlikli ekranı (lobi veya toplantı) görünür yapar; diğer ekranları gizler.
+ * name: HTML'de ekranın id değeri.
+ */
 function showScreen(name) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById(name).classList.add('active');
 }
 
+/**
+ * Kendimiz dahil katılımcı sayısını üst çubukta gösterir (bağlantısı olan kişi sayısı + 1).
+ */
 function updateParticipantCount() {
   const count = Object.keys(state.peers).length + 1;
   document.getElementById('participantCount').textContent =
     `${count} kişi`;
 }
 
+/**
+ * Oda davet bağlantısını (site adresi + /room/kod) panoya kopyalar ve bildirim gösterir.
+ */
 function copyRoomId() {
   const url = `${location.origin}/room/${state.roomId}`;
   navigator.clipboard.writeText(url).then(() => showToast('Davet linki kopyalandı!'));
 }
 
 let toastTimeout;
+/**
+ * Ekranın altında 3 saniye kadar kısa bildirim (toast) gösterir. Yeni mesaj gelirse önceki zamanlayıcı iptal edilir.
+ * msg düz metin olarak yazılır (textContent), HTML yorumlanmaz.
+ */
 function showToast(msg) {
   const el = document.getElementById('toast');
   el.textContent = msg;
@@ -1185,12 +1411,20 @@ function showToast(msg) {
   toastTimeout = setTimeout(() => el.classList.remove('show'), 3000);
 }
 
+/**
+ * Tarayıcının güvenli rastgele sayı üretecini kullanarak verilen uzunlukta (varsayılan 8) rastgele bir kod üretir.
+ * Oda kodu ve kimlik olarak kullanılır.
+ */
 function generateId(len = 8) {
   return Array.from(crypto.getRandomValues(new Uint8Array(len)))
     .map(b => b.toString(36).padStart(2, '0'))
     .join('').slice(0, len);
 }
 
+/**
+ * Metindeki & < > " ' karakterlerini HTML kaçış dizilerine çevirir.
+ * Kullanıcıdan gelen her metni innerHTML ile basmadan önce bu fonksiyondan geçirin. str metin olmalıdır (null verilirse hata olur).
+ */
 function escapeHtml(str) {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
@@ -1201,6 +1435,7 @@ function escapeHtml(str) {
 oturumYukle().then(ok => { if (ok) initLobby(); });
 
 // ─── Remote Control ──────────────────────────────────────────────────────────
+// Uzak kontrol durumu. Bu tarayıcı başka bir kişinin ekranını izlerken (kontrolcü) bu alanlar dolar.
 const remote = {
   sessionId: null,
   controlWs: null,
@@ -1233,11 +1468,18 @@ function initRemoteControl() {
   document.addEventListener('keydown',  onRemoteKeyDown);
 }
 
+/**
+ * Bir pencereyi (modal) gösterir (show true) veya gizler (show false). id: HTML'deki pencere kutusunun kimliği.
+ */
 function showModal(id, show) {
   document.getElementById(id).style.display = show ? 'flex' : 'none';
 }
 
 // ── Kontrolcü Tarafı ──────────────────────────────────────────────────────────
+/**
+ * Uzak kontrol için kişi seçme penceresini açar. Toplantıdaki diğer kişiler listelenir.
+ * Kimse yoksa uyarı gösterilir ve pencere açılmaz.
+ */
 function openRemotePicker() {
   const peers = Object.entries(state.peers);
   if (peers.length === 0) {
@@ -1264,6 +1506,11 @@ function openRemotePicker() {
   showModal('remotePickModal', true);
 }
 
+/**
+ * Kontrolcü tarafı: seçilen kişiye uzak kontrol isteği gönderir ve 'izin bekleniyor' penceresini açar.
+ * İstek sunucuya control-request mesajıyla WebSocket üzerinden gider.
+ * peerId: hedef kişinin kimliği; peerName: ekranda gösterilecek ad.
+ */
 async function requestRemoteControl(peerId, peerName) {
   remote.targetPeerId = peerId;
   remote.targetName = peerName;
@@ -1279,9 +1526,13 @@ async function requestRemoteControl(peerId, peerName) {
   });
 }
 
+/**
+ * Bekleme penceresindeki İptal düğmesi. Oturum zaten açılmışsa sunucuya /api/control/stop isteği gönderip oturum kimliğini temizler.
+ */
 function cancelControlRequest() {
   showModal('remoteWaitModal', false);
   if (remote.sessionId) {
+    // Oturum kapatma isteğinde join token POST gövdesinde gönderilir (URL'de değil).
     fetch('/api/control/stop', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1291,6 +1542,10 @@ function cancelControlRequest() {
   }
 }
 
+/**
+ * Hedef kişi isteği onayladığında çalışır. Kontrol WebSocket'ini açar ve saniyede kaç kare geldiğini (FPS) hesaplayan sayacı başlatır.
+ * sessionId: sunucunun verdiği oturum kimliği.
+ */
 function onControlApproved(sessionId) {
   showModal('remoteWaitModal', false);
   remote.sessionId = sessionId;
@@ -1319,12 +1574,20 @@ function onControlApproved(sessionId) {
   }, 1000);
 }
 
+/**
+ * Hedef kişi isteği reddettiğinde çalışır: bekleme penceresini kapatır, bilgi mesajı gösterir ve oturum kimliğini siler.
+ */
 function onControlDenied() {
   showModal('remoteWaitModal', false);
   showToast('Kontrol isteği reddedildi.');
   remote.sessionId = null;
 }
 
+/**
+ * Hedef bilgisayardan gelen bir ekran karesini (base64 JPEG) kontrolcünün tuvaline çizer ve FPS sayacını artırır.
+ * İlk karede 'bağlanıyor' yazısı gizlenir.
+ * msg.width ve msg.height karenin boyutudur; tuval de aynı boyuta ayarlanır.
+ */
 function onRemoteFrame(msg) {
   const canvas = document.getElementById('remoteCanvas');
   const ctx = canvas.getContext('2d');
@@ -1343,12 +1606,20 @@ function onRemoteFrame(msg) {
   img.src = 'data:image/jpeg;base64,' + msg.frame;
 }
 
+/**
+ * Kontrol WebSocket'i açıksa komutu (fare, klavye) JSON olarak gönderir; değilse sessizce atlar.
+ */
 function sendControlCmd(data) {
   if (remote.controlWs && remote.controlWs.readyState === WebSocket.OPEN) {
     remote.controlWs.send(JSON.stringify(data));
   }
 }
 
+/**
+ * Fare olayının koordinatını uzak ekranın çözünürlüğüne çevirir.
+ * Tuval ekranda küçük görünse bile tıklanan nokta hedef bilgisayardaki doğru piksele gider.
+ * Dönen değer: { x, y }.
+ */
 function getCanvasCoords(e) {
   const canvas = document.getElementById('remoteCanvas');
   const rect = canvas.getBoundingClientRect();
@@ -1360,12 +1631,18 @@ function getCanvasCoords(e) {
   };
 }
 
+/**
+ * Fare hareketini uzak bilgisayara iletir (mouse-move). Kontrol açık değilse hiçbir şey yapmaz.
+ */
 function onRemoteMouseMove(e) {
   if (!remote.isViewing) return;
   const { x, y } = getCanvasCoords(e);
   sendControlCmd({ type: 'mouse-move', x, y });
 }
 
+/**
+ * Tıklamayı uzak bilgisayara iletir. Sağ tık (contextmenu) için forcedBtn 'right' olarak verilir. e.detail === 2 ise çift tıklama kabul edilir.
+ */
 function onRemoteClick(e, forcedBtn) {
   if (!remote.isViewing) return;
   const { x, y } = getCanvasCoords(e);
@@ -1374,18 +1651,27 @@ function onRemoteClick(e, forcedBtn) {
   sendControlCmd({ type: 'mouse-click', x, y, button, double });
 }
 
+/**
+ * Fare tuşuna basılmasını (mouse-down) uzak bilgisayara iletir. Sürükleme için mouseup ile birlikte kullanılır.
+ */
 function onRemoteMouseDown(e) {
   if (!remote.isViewing) return;
   const { x, y } = getCanvasCoords(e);
   sendControlCmd({ type: 'mouse-down', x, y, button: e.button === 2 ? 'right' : 'left' });
 }
 
+/**
+ * Fare tuşunun bırakılmasını (mouse-up) uzak bilgisayara iletir.
+ */
 function onRemoteMouseUp(e) {
   if (!remote.isViewing) return;
   const { x, y } = getCanvasCoords(e);
   sendControlCmd({ type: 'mouse-up', x, y, button: e.button === 2 ? 'right' : 'left' });
 }
 
+/**
+ * Tekerlek hareketini uzak bilgisayara iletir. Aşağı kaydırma -3, yukarı kaydırma +3 değerinde gönderilir.
+ */
 function onRemoteScroll(e) {
   if (!remote.isViewing) return;
   const { x, y } = getCanvasCoords(e);
@@ -1394,7 +1680,8 @@ function onRemoteScroll(e) {
 
 // Klavye: sadece viewer açıkken yakala
 function onRemoteKeyDown(e) {
-  if (!remote.isViewing || !document.getElementById('remoteViewer').style.display === 'flex') return;
+  // Yalnızca uzak ekran görüntüleyici açıkken tuşları yakala.
+  if (!remote.isViewing || document.getElementById('remoteViewer').style.display !== 'flex') return;
   if (['INPUT','TEXTAREA'].includes(document.activeElement?.tagName)) return;
 
   e.preventDefault();
@@ -1416,6 +1703,9 @@ function onRemoteKeyDown(e) {
   sendControlCmd({ type: 'key-press', key, modifiers: mods });
 }
 
+/**
+ * Uzak kontrolü bitirir: izleme penceresini kapatır, FPS sayacını durdurur, kontrol WebSocket'ine stop-control gönderip kapatır ve /api/control/stop ile oturumu sunucuda da sonlandırır.
+ */
 function stopRemoteControl() {
   remote.isViewing = false;
   document.getElementById('remoteViewer').style.display = 'none';
@@ -1440,6 +1730,9 @@ function stopRemoteControl() {
   showToast('Uzak kontrol sonlandırıldı.');
 }
 
+/**
+ * Uzak ekran penceresini tam ekran açar veya kapatır (Fullscreen API). Tarayıcı desteklemezse hiçbir şey olmaz.
+ */
 function toggleRemoteFullscreen() {
   const el = document.getElementById('remoteViewer');
   if (!document.fullscreenElement) {
@@ -1450,9 +1743,14 @@ function toggleRemoteFullscreen() {
 }
 
 // ── Hedef Tarafı (İzin veren) ─────────────────────────────────────────────────
+// Hedef taraf (ekranı paylaşan kişi) için bekleyen kontrol isteği bilgileri. Onay ya da red sonrası sıfırlanır.
 let pendingControlSession = null;
 let pendingAgentKey = null;
 
+/**
+ * Hedef taraf: başka bir kişi kontrol istediğinde çalışır. Oturum kimliğini ve ajan anahtarını saklar, onay penceresini açar.
+ * msg.controller_name: isteyen kişinin adı; msg.session_id, msg.agent_key: sunucudan gelen bilgiler.
+ */
 function onControlRequest(msg) {
   pendingControlSession = msg.session_id;
   pendingAgentKey = msg.agent_key;
@@ -1461,6 +1759,10 @@ function onControlRequest(msg) {
   showModal('remoteRequestModal', true);
 }
 
+/**
+ * Hedef kişi 'İzin ver' dediğinde çalışır. Sunucuya onay gönderir ve Windows/Linux için ajan kurulum bilgilerini gösterir.
+ * Ajan bu bilgilerle sunucuya bağlanıp ekranı paylaşır; bekleyen istek bilgisi sıfırlanır.
+ */
 function approveControlRequest() {
   showModal('remoteRequestModal', false);
   if (!pendingControlSession) return;
@@ -1490,25 +1792,38 @@ function approveControlRequest() {
   pendingAgentKey = null;
 }
 
-function switchOsTab(os) {
+/**
+ * Ajan penceresindeki Windows / Linux sekmelerini değiştirir. Seçilen sekmenin içeriğini gösterir, diğerini gizler.
+ * Not: event genel değişkeninden okunur; bu fonksiyon yalnızca tıklama olayından çağrılmalıdır.
+ */
+function switchOsTab(os, ev) {
   document.querySelectorAll('.os-tab').forEach(t => t.classList.remove('active'));
   document.getElementById('osWindows').style.display = os === 'windows' ? 'flex' : 'none';
   document.getElementById('osLinux').style.display  = os === 'linux'   ? 'flex' : 'none';
-  event.target.classList.add('active');
+  ev.target.classList.add('active');
 }
 
+/**
+ * Windows için ajan bilgilerini (sunucu, oturum kodu, anahtar) panoya kopyalar.
+ */
 function copyAgentInfo() {
   const txt = document.getElementById('agentCmdWindows').textContent;
   navigator.clipboard.writeText(txt);
   showToast('Bilgiler kopyalandı!');
 }
 
+/**
+ * Linux için ajan çalıştırma komutunu panoya kopyalar.
+ */
 function copyAgentCmd() {
   const txt = document.getElementById('agentCmdLinux').textContent;
   navigator.clipboard.writeText(txt);
   showToast('Komut kopyalandı!');
 }
 
+/**
+ * Hedef kişi 'Reddet' dediğinde çalışır: isteği sunucuya approved false olarak bildirir ve bekleyen istek bilgisini siler.
+ */
 function denyControlRequest() {
   showModal('remoteRequestModal', false);
   if (!pendingControlSession) return;
@@ -1524,9 +1839,14 @@ function denyControlRequest() {
 
 // ─── TTS Pipeline ─────────────────────────────────────────────────────────────
 
+/**
+ * Sunucuya bu kişinin kayıtlı bir ses profili olup olmadığını sorar. Ses profili, çeviri sesinin kendi sesimize benzetilmesi için kullanılır (şu an sabit ses kullanılıyor).
+ * Hata olursa false döner.
+ * DİKKAT: join token URL sorgusunda gönderiliyor.
+ */
 async function checkVoiceProfile() {
   try {
-    const res = await fetch(`/api/tts/voice-profile/status?token=${state.joinToken}`);
+    const res = await fetch(`/api/tts/voice-profile/status?token=${encodeURIComponent(state.joinToken)}`);
     const data = await res.json();
     state.hasVoiceProfile = data.exists;
     return data.exists;
@@ -1536,6 +1856,10 @@ async function checkVoiceProfile() {
   }
 }
 
+/**
+ * Mikrofondan 30 saniyelik ses kaydı alır ve bitince uploadVoiceProfile ile sunucuya yükler.
+ * Süre dolunca kayıt otomatik durur. Mikrofon izni yoksa kullanıcıya bildirim gösterilir.
+ */
 async function startVoiceProfileRecording() {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -1568,6 +1892,10 @@ async function startVoiceProfileRecording() {
   }
 }
 
+/**
+ * Kaydedilen ses dosyasını base64'e çevirip sunucuya yükler. Parçalar halinde kodlanır, çünkü çok büyük diziler String.fromCharCode'da taşma yapar.
+ * Başarılıysa hasVoiceProfile true olur. Hata olursa kullanıcıya bildirilir.
+ */
 async function uploadVoiceProfile(blob) {
   try {
     showToast('⏳ Ses profili işleniyor...');
@@ -1601,6 +1929,9 @@ async function uploadVoiceProfile(blob) {
   }
 }
 
+/**
+ * Anlık çeviri düğmesi. Açılınca konuşma tanımayı başlatır, kapanınca durdurur. Düğmenin rengi ve başlığı durumu gösterir.
+ */
 function toggleTTS() {
   state.ttsEnabled = !state.ttsEnabled;
   const btn = document.getElementById('ttsBtn');
@@ -1618,6 +1949,12 @@ function toggleTTS() {
   }
 }
 
+/**
+ * Türkçe konuşmayı yazıya çevirmeye (Web Speech API) başlar. Her cümle bitince processTTSText ile İngilizceye çevrilir.
+ * Tanıma bittiğinde (onend) çeviri hâlâ açıksa otomatik yeniden başlatılır; böylece sürekli dinleme sağlanır.
+ * Tarayıcı desteklemezse bildirim gösterilir.
+ */
+// Tarayıcının konuşma tanıma API'si. Chrome ve Edge'de webkit önekiyle gelir; Firefox desteklemez.
 function startTTSCapture() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) {
@@ -1644,6 +1981,9 @@ function startTTSCapture() {
   };
   state.ttsRecognition.start();
 }
+/**
+ * Konuşma tanımayı durdurur. onend olayı önce temizlenir ki durdurunca otomatik yeniden başlatma tetiklenmesin.
+ */
 function stopTTSCapture() {
   if (state.ttsRecognition) {
     state.ttsRecognition.onend = null;
@@ -1652,6 +1992,10 @@ function stopTTSCapture() {
   }
 }
 let currentTTSAudio = null;
+/**
+ * Base64 kodlu WAV sesini çalar. Önce çalan ses varsa durdurulur, böylece çeviri sesleri üst üste binmez.
+ * Bitince nesne URL'si serbest bırakılır (bellek sızıntısı olmaz).
+ */
 async function playTTSAudio(base64Audio) {
   try {
     if (currentTTSAudio) {
@@ -1671,6 +2015,13 @@ async function playTTSAudio(base64Audio) {
     console.error('TTS audio play error:', e);
   }
 }
+/**
+ * Konuşulan Türkçe metni sunucunun çeviri servisine gönderir (TR -> EN) ve dönen sesi çalar.
+ * Aynı anda yalnızca bir çeviri işlenir (ttsProcessing kilidi).
+ * Ses, diğer kişilere tts-audio mesajıyla da gönderilir.
+ * Hata olursa en fazla 10 saniyede bir uyarı gösterilir.
+ * text: tanınan Türkçe cümle.
+ */
 async function processTTSText(text) {
   if (state.ttsProcessing) return;
   state.ttsProcessing = true;

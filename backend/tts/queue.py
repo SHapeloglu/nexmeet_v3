@@ -1,3 +1,6 @@
+"""Konuşmacı başına ayrı TTS iş kuyruğu. Her konuşmacının sesi kendi kuyruğunda ve kendi worker'ında işlenir; biri diğerini bekletmez.
+Kuyruk dolarsa en eski iş atılır (gecikme birikiyor demektir). Worker 30 saniye iş gelmezse kendini durdurur, yeni iş gelince yeniden başlar.
+Bu dosya tts paketinin parçasıdır ve canlı sistemde kullanılmaz (bkz. engine.py)."""
 import asyncio
 import uuid
 import time
@@ -12,11 +15,13 @@ class TTSQueue:
     10 kişi aynı anda konuşsa bile birbirini bloklamaz.
     """
     def __init__(self):
+        """Kuyruk ve worker sözlüklerini boş oluşturur. _running shutdown çağrılana kadar True kalır ve worker döngüsünü ayakta tutar."""
         self._queues: Dict[str, asyncio.Queue] = {}
         self._workers: Dict[str, asyncio.Task] = {}
         self._running = True
 
     def get_queue(self, peer_id: str) -> asyncio.Queue:
+        """Konuşmacının iş kuyruğunu döner, yoksa oluşturur. Kuyruk en fazla 5 iş tutar; böylece gecikme birikmesi sınırlanır."""
         if peer_id not in self._queues:
             self._queues[peer_id] = asyncio.Queue(maxsize=5)
         return self._queues[peer_id]
@@ -101,6 +106,7 @@ class TTSQueue:
             del self._queues[peer_id]
 
     async def shutdown(self):
+        """Uygulama kapanırken çalışır. Yeni iş işlenmesini durdurur ve tüm worker görevlerini iptal eder."""
         self._running = False
         for task in self._workers.values():
             task.cancel()

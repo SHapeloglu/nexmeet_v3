@@ -1,6 +1,12 @@
+/* NexMeet video konferans arayüzünün ana stil dosyası (lobi, toplantı ekranı, dosya paneli, uzak masaüstü görüntüleyici, üyelik sayfaları). */
+/* Tek sayfa uygulaması: .screen sınıflı ekranlar JS ile birbirinin yerine geçer. */
+/* Renkler :root içinde değişkenlerle tanımlı (--accent yeşil, --accent2 mor, --danger kırmızı). */
 /* ── Reset & Base ── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* :root: koyu tema renkleri ve boyutlar. */
+/* --accent: konuşma çerçevesi, açık mikrofon/kamera; --accent2: ekran paylaşımı; --danger: kayıt ve çıkış. */
+/* --ctrl-size: kontrol düğmelerinin boyutu (telefonda küçülür). */
 :root {
   --bg: #0a0a0f;
   --surface: #13131a;
@@ -10,11 +16,12 @@
   --accent2: #818CF8;
   --danger: #F87171;
   --text: #f0f0f5;
-  --text-muted: #6b6b80;
+  --text-muted: #9a9ab0;
   --radius: 16px;
   --ctrl-size: 52px;
 }
 
+/* Sayfa tam ekran, sayfa kendisi kaydırılmaz; kaydırma gerekirse her alan kendi içinde kayar. */
 html, body { height: 100%; overflow: hidden; }
 
 body {
@@ -24,26 +31,32 @@ body {
   font-size: 15px;
 }
 
+/* Ekran kapsayıcısı: tam ekran ve gizli. Yalnız .active sınıfı olan ekran görünür (JS geçiş yapar). */
 .screen { display: none; height: 100vh; width: 100vw; position: fixed; inset: 0; }
 .screen.active { display: flex; }
 
 /* ── LOBBY ── */
+/* Lobi arka planı: dönen bulanık renkli daireler (orb). Öğelerin arkasında kalır (z-index 0). */
 .lobby-bg {
   position: absolute; inset: 0; overflow: hidden; z-index: 0;
 }
+/* Bulanık daire: 80 piksel bulanıklık, yarı saydam, 8 saniyede süzülerek hareket eder. */
 .orb {
   position: absolute; border-radius: 50%; filter: blur(80px); opacity: 0.35;
   animation: float 8s ease-in-out infinite;
 }
+/* Üç daire farklı konum, renk ve gecikmeyle hareket eder; böylece hareket düzensiz ve doğal görünür. */
 .orb-1 { width: 500px; height: 500px; background: var(--accent); top: -150px; left: -150px; animation-delay: 0s; }
 .orb-2 { width: 400px; height: 400px; background: var(--accent2); bottom: -100px; right: -100px; animation-delay: -3s; }
 .orb-3 { width: 300px; height: 300px; background: #f59e0b; top: 50%; left: 50%; transform: translate(-50%,-50%); animation-delay: -6s; }
 
+/* float: daire hafifçe kayar ve %5 büyür. */
 @keyframes float {
   0%, 100% { transform: translate(0,0) scale(1); }
   50% { transform: translate(20px, -20px) scale(1.05); }
 }
 
+/* Lobi içeriği: dikey ortalı, öğeler arası 28 piksel. Arka plandan üstte (z-index 1). Uzun içerikte kendi içinde kayar. */
 .lobby-content {
   position: relative; z-index: 1;
   display: flex; flex-direction: column; align-items: center;
@@ -58,6 +71,7 @@ body {
   font-size: 22px; color: var(--text);
 }
 
+/* Lobi başlığı: ekran genişliğine göre 32 ile 56 piksel arasında (clamp). */
 .lobby-content h1 {
   font-family: 'Syne', sans-serif;
   font-size: clamp(32px, 5vw, 56px);
@@ -72,6 +86,7 @@ body {
   max-width: 480px; line-height: 1.6;
 }
 
+/* Lobi formu: dikey dizilim, en fazla 440 piksel. */
 .lobby-form {
   display: flex; flex-direction: column; gap: 12px;
   width: 100%; max-width: 440px;
@@ -90,11 +105,13 @@ body {
 .lobby-form input:focus { border-color: var(--accent); }
 .lobby-form input::placeholder { color: var(--text-muted); }
 
+/* Oda kodu satırı: giriş kutusu ve buton yan yana; giriş esnek olarak kalan alanı doldurur. */
 .room-row {
   display: flex; gap: 10px;
 }
 .room-row input { flex: 1; }
 
+/* Ana buton: yeşil zemin, koyu yazı (metin koyu olunca yeşil üzerinde okunur). */
 .btn-primary {
   background: var(--accent);
   color: #0a0a0f;
@@ -116,6 +133,7 @@ body {
 .lobby-preview {
   width: 100%; max-width: 440px;
 }
+/* Kamera önizleme kutusu: 16:9 oran, yuvarlak köşe, taşan kısım gizlenir. */
 .preview-video-wrap {
   position: relative;
   background: var(--surface);
@@ -124,6 +142,8 @@ body {
   overflow: hidden;
   aspect-ratio: 16/9;
 }
+/* Önizleme videosu kutuyu doldurur; scaleX(-1) görüntüyü yatay çevirir (ayna gibi). */
+/* Sadece önizlemede; karşı tarafa giden görüntü etkilenmez. */
 .preview-video-wrap video {
   width: 100%; height: 100%; object-fit: cover;
   transform: scaleX(-1);
@@ -145,6 +165,7 @@ body {
 .preview-controls .ctrl-btn:hover { background: rgba(255,255,255,0.2); }
 
 /* ── MEETING ── */
+/* Toplantı ekranı: dikey düzen (üstte çubuk, ortada video, altta kontroller). */
 #meeting {
   flex-direction: column;
   background: var(--bg);
@@ -170,6 +191,7 @@ body {
 .topbar-right {
   display: flex; align-items: center; gap: 12px;
 }
+/* Oda kodu rozeti: tıklanıp kopyalanabilir, mono yazı, yeşil. */
 .room-badge {
   display: flex; align-items: center; gap: 6px;
   background: var(--surface2);
@@ -189,12 +211,14 @@ body {
 }
 
 /* Video Area */
+/* Video alanı: kalan tüm yüksekliği kaplar; taşan kısım gizlenir. */
 .video-area {
   flex: 1; overflow: hidden;
   padding: 12px;
   position: relative;
 }
 
+/* Video ızgarası: katılımcı sayısına göre düzen değişir (aşağıda count sınıfları, JS verir). */
 .video-grid {
   display: grid;
   width: 100%; height: 100%;
@@ -204,6 +228,9 @@ body {
 }
 
 /* Grid layouts */
+/* Katılımcı sayısına göre ızgara: */
+/* 1 kişi tam ekran; 2 kişi yan yana; 3 kişi: ilk kişi üstte tam genişlikte, diğer ikisi altta yan yana; */
+/* 4 kişi iki sütun ve iki satır; 5 ve 6 kişi üç sütun; daha fazlası üç sütun. */
 .video-grid.count-1 { grid-template-columns: 1fr; }
 .video-grid.count-2 { grid-template-columns: 1fr 1fr; }
 .video-grid.count-3 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
@@ -213,6 +240,7 @@ body {
 .video-grid.count-6 { grid-template-columns: repeat(3, 1fr); grid-template-rows: 1fr 1fr; }
 .video-grid.count-many { grid-template-columns: repeat(3, 1fr); }
 
+/* Bir katılımcı kutusu: en az 120 piksel, koyu zemin, yuvarlak köşe. Kenarlık 2 piksel ama şeffaf (konuşma çerçevesi için yer ayrılır). */
 .video-tile {
   position: relative;
   width: 100%; height: 100%;
@@ -223,16 +251,23 @@ body {
   border: 2px solid transparent;
   transition: border-color 0.3s;
 }
+/* Konuşan kişi: kenarlık yeşil olur (JS 'speaking' sınıfını ekler). */
 .video-tile.speaking { border-color: var(--accent); }
+/* Ekran paylaşan kişi: kenarlık mor. */
 .video-tile.screen-share { border-color: var(--accent2); }
 
+/* Kamera görüntüsü kutuyu doldurur (kırpılarak, object-fit cover). */
 .video-tile video {
   width: 100%; height: 100%;
   object-fit: cover;
 }
+/* Kendi kamera görüntümüz ayna gibi çevrilir (önizleme ile aynı). */
 .video-tile.local video { transform: scaleX(-1); }
+/* Ekran paylaşımı kırpılmaz (contain): ekranın tamamı görünür, boşluklar siyah. */
+/* transform none: ayna çevirme bu görüntüye uygulanmaz (yazılar ters çıkmasın diye). */
 .video-tile.screen-share video { transform: none; object-fit: contain; background: #000; }
 
+/* Katılımcı adı etiketi: sol altta, yarı saydam siyah zemin, bulanık arka plan. */
 .tile-name {
   position: absolute; bottom: 10px; left: 10px;
   background: rgba(0,0,0,0.65);
@@ -243,12 +278,14 @@ body {
 }
 .tile-name .muted-icon { font-size: 11px; opacity: 0.8; }
 
+/* Kamera kapalıyken kutunun üstünü kaplayan koyu katman (video yerine gösterilir). */
 .video-off-overlay {
   position: absolute; inset: 0;
   background: var(--surface2);
   display: flex; flex-direction: column;
   align-items: center; justify-content: center; gap: 8px;
 }
+/* Kamera kapalıyken ortada gösterilen baş harf dairesi (avatar). */
 .avatar-circle {
   width: 64px; height: 64px; border-radius: 50%;
   background: linear-gradient(135deg, var(--accent), var(--accent2));
@@ -258,6 +295,7 @@ body {
 }
 
 /* Controls bar */
+/* Alt kontrol çubuğu: sabit 74 piksel yükseklik, ortada düğmeler. */
 .controls-bar {
   display: flex; align-items: center;
   justify-content: space-between;
@@ -270,6 +308,7 @@ body {
   display: flex; align-items: center; gap: 10px;
 }
 
+/* Yuvarlak kontrol düğmesi (mikrofon, kamera, ekran vb.). Boyutu --ctrl-size değişkeninden gelir. */
 .ctrl-btn {
   width: var(--ctrl-size); height: var(--ctrl-size);
   border-radius: 50%;
@@ -283,12 +322,15 @@ body {
 }
 .ctrl-btn svg { width: 22px; height: 22px; }
 .ctrl-btn:hover { background: var(--surface); border-color: rgba(255,255,255,0.2); transform: scale(1.05); }
+/* Açık durum (ör. mikrofon açık): yeşil kenarlık ve yazı. */
 .ctrl-btn.active { background: rgba(110,231,183,0.15); border-color: var(--accent); color: var(--accent); }
 .ctrl-btn.screen-on { background: rgba(129,140,248,0.15); border-color: var(--accent2); color: var(--accent2); }
+/* Kayıt düğmesi: kırmızı ve yanıp söner (kayıt sürerken dikkat çeker). */
 .ctrl-btn.recording { background: rgba(248,113,113,0.2); border-color: var(--danger); color: var(--danger); animation: pulse-record 1.2s ease-in-out infinite; }
 .ctrl-btn.leave { background: rgba(248,113,113,0.1); border-color: var(--danger); color: var(--danger); }
 .ctrl-btn.leave:hover { background: var(--danger); color: #fff; }
 
+/* Kapalı simgenin üstünden çizilen eğik kırmızı çizgi (ör. kamera kapalı). */
 .slash-line {
   position: absolute; width: 70%; height: 2px;
   background: var(--danger); border-radius: 2px;
@@ -296,22 +338,26 @@ body {
   pointer-events: none;
 }
 
+/* pulse-record: düğme etrafında kırmızı halka genişleyip kaybolur. */
 @keyframes pulse-record {
   0%, 100% { box-shadow: 0 0 0 0 rgba(248,113,113,0.4); }
   50% { box-shadow: 0 0 0 8px rgba(248,113,113,0); }
 }
 
+/* Kayıt göstergesi: kırmızı nokta ve 'KAYIT' yazısı yan yana. */
 .record-indicator {
   display: flex; align-items: center; gap: 8px;
   color: var(--danger); font-size: 13px; font-weight: 600;
   letter-spacing: 0.5px;
 }
+/* Kayıt noktası: kırmızı, nabız gibi atar (pulse-record). */
 .rec-dot {
   width: 10px; height: 10px; border-radius: 50%;
   background: var(--danger);
   animation: pulse-record 1.2s ease-in-out infinite;
 }
 
+/* Bildirim sayısı rozeti: katılımcı kutusunun sağ üstünde kırmızı daire (yeni mesaj sayısı vb.). */
 .badge {
   position: absolute; top: 4px; right: 4px;
   background: var(--danger); color: #fff;
@@ -321,6 +367,8 @@ body {
 }
 
 /* Chat panel */
+/* Sohbet paneli: sağdan açılır (başta ekran dışında). Üst çubuğun altında, kontrol çubuğunun üstünde. */
+/* z-index 100: videonun üstünde durur ama modal (500) ve bildirim (999) altındadır. */
 .chat-panel {
   position: fixed; right: 0; top: 56px;
   bottom: 74px; width: 320px;
@@ -331,7 +379,9 @@ body {
   transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   z-index: 100;
 }
+/* 'open' sınıfı: panel kayarak görünür hale gelir (JS ekler/çıkarır). */
 .chat-panel.open { transform: translateX(0); }
+/* Sohbet başlığı: sol başlık, sağda kapat (X) düğmesi. */
 .chat-header {
   display: flex; justify-content: space-between; align-items: center;
   padding: 14px 16px;
@@ -344,6 +394,7 @@ body {
   transition: color 0.2s;
 }
 .chat-header button:hover { color: var(--text); }
+/* Mesaj listesi: kalan alanı doldurur, kaydırılabilir; mesajlar dikey dizilir. */
 .chat-messages {
   flex: 1; overflow-y: auto; padding: 12px;
   display: flex; flex-direction: column; gap: 10px;
@@ -352,22 +403,26 @@ body {
 .chat-messages::-webkit-scrollbar-track { background: transparent; }
 .chat-messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
+/* Tek mesaj: en fazla %90 genişlik. Kendi mesajlarımız sağa yaslanır (own sınıfı). */
 .chat-msg { max-width: 90%; }
 .chat-msg.own { align-self: flex-end; }
 .chat-msg-name { font-size: 11px; color: var(--text-muted); margin-bottom: 3px; }
 .chat-msg.own .chat-msg-name { text-align: right; }
+/* Mesaj balonu: yuvarlak köşe, hafif kenarlık. */
 .chat-msg-bubble {
   background: var(--surface2);
   border-radius: 12px; padding: 8px 12px;
   font-size: 14px; line-height: 1.5;
   border: 1px solid var(--border);
 }
+/* Kendi mesajımız: yeşil tonlu balon ve yeşil yazı (karşı taraftan ayırt etmek için). */
 .chat-msg.own .chat-msg-bubble {
   background: rgba(110,231,183,0.12);
   border-color: rgba(110,231,183,0.25);
   color: var(--accent);
 }
 .chat-msg-time { font-size: 10px; color: var(--text-muted); margin-top: 2px; text-align: right; }
+/* Sistem mesajı (ör. 'X katıldı'): ortalı, küçük ve soluk. */
 .chat-system {
   text-align: center; font-size: 12px; color: var(--text-muted);
   padding: 4px 0;
@@ -395,6 +450,8 @@ body {
 }
 .chat-input-row button:hover { transform: scale(1.05); }
 
+/* Kısa bildirim (ör. 'Link kopyalandı'): alt ortada, başta görünmez (opaklık 0). */
+/* .show ile belirir; pointer-events none sayesinde altındaki düğmelere tıklamayı engellemez. */
 /* Toast */
 .toast {
   position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%);
@@ -408,12 +465,15 @@ body {
 .toast.show { opacity: 1; }
 
 /* Scrollbar global */
+/* Firefox için ince kaydırma çubuğu ve renk (Chrome/Safari için yukarıda ayrı kurallar var). */
 * { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
 
 /* ── Files Panel ── */
+/* Dosya paneli: sohbet paneliyle aynı şekilde sağdan açılır (aynı sınıf kuralları kullanılır). */
 .files-panel { right: 0; }
 .files-panel.open { transform: translateX(0); }
 
+/* Dosya yükleme alanı: kesikli çerçeve, tıklanarak veya sürüklenerek dosya eklenir. */
 .file-upload-area {
   margin: 12px;
   border: 2px dashed var(--border);
@@ -423,6 +483,7 @@ body {
   cursor: pointer; transition: border-color 0.2s, background 0.2s;
   position: relative; overflow: hidden;
 }
+/* Üzerine gelince veya dosya sürüklenince (drag-over) yeşil çerçeve ve hafif yeşil zemin. */
 .file-upload-area:hover, .file-upload-area.drag-over {
   border-color: var(--accent);
   background: rgba(110,231,183,0.05);
@@ -435,6 +496,7 @@ body {
 .drop-text { font-size: 13px; color: var(--text-muted); line-height: 1.5; }
 .drop-hint { font-size: 11px; color: var(--text-muted); opacity: 0.6; }
 
+/* Yükleme ilerlemesi alanı: ilerleme çubuğu ve yüzde yazısı. */
 .upload-progress {
   width: 100%; padding: 16px; display: flex; flex-direction: column; gap: 8px;
 }
@@ -448,10 +510,12 @@ body {
 }
 .progress-label { font-size: 12px; color: var(--text-muted); text-align: center; }
 
+/* Dosya listesi: kalan alanı doldurur, kaydırılır. */
 .files-list {
   flex: 1; overflow-y: auto; padding: 4px 12px 12px;
   display: flex; flex-direction: column; gap: 8px;
 }
+/* Tek dosya kartı: ikon, ad, boyut ve indirme düğmesi yan yana. */
 .file-item {
   background: var(--surface2);
   border: 1px solid var(--border);
@@ -462,12 +526,14 @@ body {
 .file-item:hover { border-color: rgba(255,255,255,0.15); }
 .file-icon { font-size: 26px; flex-shrink: 0; }
 .file-info { flex: 1; min-width: 0; }
+/* Uzun dosya adı tek satırda kalır, sığmazsa sonu üç nokta olur (ellipsis). */
 .file-name {
   font-size: 13px; font-weight: 500;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   color: var(--text);
 }
 .file-meta { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+/* İndirme bağlantısı buton gibi görünür (a etiketi olduğu için altı çizgisi kapatılır). */
 .file-download {
   background: rgba(110,231,183,0.12);
   border: 1px solid rgba(110,231,183,0.25);
@@ -478,15 +544,18 @@ body {
   text-decoration: none; display: inline-block;
 }
 .file-download:hover { background: rgba(110,231,183,0.2); }
+/* Yeni eklenen dosya: kısa bir büyüme animasyonuyla belirir. */
 .file-new { animation: file-pop 0.4s cubic-bezier(0.34,1.56,0.64,1); }
 @keyframes file-pop {
   from { opacity: 0; transform: scale(0.85) translateY(8px); }
   to   { opacity: 1; transform: scale(1) translateY(0); }
 }
 
+/* 600 piksel ve altı (telefon): */
+/* - Kontrol düğmeleri küçülür; alt çubuk yüksekliği içeriğe göre değişir (güvenli alan için alt boşluk eklenir). */
+/* - Pinli düzende kişi üstte, küçük kutular altta yatay şeritte. */
 @media (max-width: 600px) {
   .topbar-left .logo-sm span { display: none; }
-  :root { --ctrl-size: 44px; }
   .controls-center { gap: 6px; }
   /* Mobil: ikonlar altta kalmasın */
   .controls-bar {
@@ -522,6 +591,7 @@ body {
 }
 
 /* ── Modals ── */
+/* Modal arka planı: tüm ekranı kaplar, yarı saydam siyah ve bulanık. z-index 500: sohbet (100) üstünde, bildirim (999) altında. */
 .modal-overlay {
   position: fixed; inset: 0; z-index: 500;
   background: rgba(0,0,0,0.75);
@@ -531,6 +601,7 @@ body {
 }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
+/* Modal kutusu: en fazla 440 piksel, ortalı, açılırken hafif büyüyerek gelir. */
 .modal-box {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -547,6 +618,7 @@ body {
 .modal-icon { font-size: 40px; text-align: center; }
 .modal-box h2 { font-family:'Syne',sans-serif; font-size:20px; font-weight:700; text-align:center; }
 .modal-box p  { color: var(--text-muted); font-size:14px; text-align:center; line-height:1.6; }
+/* Modal içi uyarı kutusu: kırmızı zemin ve kenarlık (ör. 'Odadan çıkılacak'). */
 .modal-warning {
   background: rgba(248,113,113,0.1); border:1px solid rgba(248,113,113,0.25);
   border-radius:10px; padding:10px 14px;
@@ -570,7 +642,9 @@ body {
 .modal-btn-primary:hover { transform:translateY(-1px); box-shadow: 0 6px 20px rgba(110,231,183,0.3); }
 
 /* Peer list inside modal */
+/* Modal içindeki katılımcı listesi: en fazla 200 piksel, kaydırılır. */
 .peer-list { display:flex; flex-direction:column; gap:8px; max-height:200px; overflow-y:auto; }
+/* Listedeki katılımcı satırı: tıklanabilir, üzerine gelince yeşil çerçeve. */
 .peer-list-item {
   display:flex; align-items:center; gap:12px;
   background: var(--surface2); border:1px solid var(--border);
@@ -587,6 +661,7 @@ body {
 .peer-list-name { font-size:14px; font-weight:500; }
 
 /* Agent steps */
+/* Uzak masaüstü için ajan kurulum adımları: numaralı kutular alt alta. */
 .agent-steps { display:flex; flex-direction:column; gap:12px; }
 .agent-step {
   display:flex; align-items:flex-start; gap:12px;
@@ -600,12 +675,14 @@ body {
   display:flex; align-items:center; justify-content:center; flex-shrink:0;
 }
 .agent-step strong { display:block; font-size:13px; margin-bottom:4px; }
+/* Kurulum komutu kutusu: mono yazı, uzun komut kırılarak sarılır (break-all) ki taşmasın. */
 .agent-step code {
   display:block; font-size:11px; color: var(--accent);
   background: rgba(0,0,0,0.3); border-radius:6px;
   padding:6px 8px; font-family:monospace;
   word-break:break-all; margin-top:4px;
 }
+/* 'Komutu kopyala' düğmesi: küçük ve soluk; üzerine gelince yeşil. */
 .copy-cmd-btn {
   margin-top:6px; background: var(--surface); border:1px solid var(--border);
   color: var(--text-muted); border-radius:6px;
@@ -614,10 +691,12 @@ body {
 }
 .copy-cmd-btn:hover { color: var(--accent); border-color: var(--accent); }
 
+/* Dönen simge (ör. yükleniyor işareti). Döndürme spin animasyonuyla yapılır. */
 .spin { display:inline-block; animation: spin 1.2s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ── Remote Viewer ── */
+/* Uzak masaüstü görüntüleyici: tüm ekranı kaplar, siyah zemin, z-index 400 (sohbetin üstünde, modalin altında). */
 .remote-viewer {
   position: fixed; inset: 0; z-index: 400;
   background: #000;
@@ -639,24 +718,29 @@ body {
   font-size:13px; cursor:pointer; transition: background 0.2s;
 }
 .remote-viewer-actions button:hover { background: var(--border); }
+/* Tehlikeli düğme (bağlantıyı kes): kırmızı yazı ve kenarlık. !important, üstteki genel düğme kurallarını ezer. */
 .danger-btn { color: var(--danger) !important; border-color: rgba(248,113,113,0.35) !important; }
 .danger-btn:hover { background: rgba(248,113,113,0.15) !important; }
 
+/* Uzak ekran çizim alanı: imleç gizlenir (cursor none). Uzak ekranın imleci ayrıca çizilmezse kullanıcı imleci göremez (kontrol edin). */
 .remote-canvas-wrap {
   flex:1; overflow:hidden; position:relative;
   display:flex; align-items:center; justify-content:center;
   cursor: none;  /* gizle, custom cursor kullanacağız */
 }
+/* Uzak ekran canvas'ı: alanın içine sığar, en-boy oranı korunur (max-width ve max-height 100%). */
 #remoteCanvas {
   max-width:100%; max-height:100%;
   display:block;
   cursor: crosshair;
 }
+/* Bağlanma ekranı: alanın ortasında dönen halka ve yazı; bağlantı kurulunca gizlenir (JS). */
 .remote-connecting {
   position:absolute; inset:0;
   display:flex; flex-direction:column; align-items:center; justify-content:center;
   gap:16px; color: var(--text-muted);
 }
+/* Dönen yükleme halkası: üst kenarı yeşil, diğer kenarları gri. */
 .spinner {
   width:40px; height:40px; border-radius:50%;
   border:3px solid var(--border);
@@ -665,6 +749,7 @@ body {
 }
 
 /* ── OS Tabs ── */
+/* İşletim sistemi sekmeleri (Windows, Mac, Linux): eşit genişlikte, seçili olan yeşil. */
 .os-tabs {
   display: flex; gap: 8px;
 }
@@ -681,6 +766,7 @@ body {
 }
 
 /* Pin layout */
+/* Pin düzeni: seçilen kişi büyük alanda, diğerleri sağda dikey şeritte (yatay dizilim). */
 .video-grid.pinned {
   display: flex;
   flex-direction: row;
@@ -707,6 +793,7 @@ body {
   min-height: 120px;
   flex: none;
 }
+/* Pin düğmesi: kutunun sağ üstünde, normalde gizli (opaklık 0); kutunun üstüne gelince görünür. */
 .pin-btn {
   position: absolute;
   top: 6px;
@@ -724,6 +811,7 @@ body {
 }
 .video-tile:hover .pin-btn { opacity: 1; }
 .video-tile.pinned-tile .pin-btn { opacity: 1; background: var(--accent); }
+/* Otomatik pin rozeti: konuşan kişi otomatik öne alındığında sol üstte yeşil yazı. */
 .auto-pin-indicator {
   position: absolute;
   top: 6px;
@@ -737,6 +825,7 @@ body {
 }
 
 /* ── ÜYELİK SAYFALARI ── */
+/* Üyelik sayfaları (giriş, kayıt, şifre): ekranda ortalanmış tek kart. */
 .auth-body {
   min-height: 100vh;
   display: flex; align-items: center; justify-content: center;
@@ -744,6 +833,7 @@ body {
   margin: 0;
   background: var(--bg);
 }
+/* Giriş/kayıt kartı: en fazla 420 piksel, dikey form düzeni. */
 .auth-kart {
   width: 100%; max-width: 420px;
   background: var(--surface);
@@ -763,6 +853,7 @@ body {
   display: flex; flex-direction: column; gap: 6px;
   font-size: 13px; color: var(--text-muted);
 }
+/* Giriş alanları: font büyüklüğü 16 piksel. iOS, 16 pikselden küçük yazılı alanlara odaklanınca ekranı otomatik yakınlaştırır; 16 bu yüzden seçildi. */
 .auth-form input {
   background: var(--surface2);
   border: 1.5px solid var(--border);
@@ -778,6 +869,7 @@ body {
 .auth-form input:focus { border-color: var(--accent); }
 .auth-btn { width: 100%; }
 .auth-btn:disabled { opacity: 0.6; cursor: wait; }
+/* İkincil buton: yeşil kenarlık ve yazı, zeminsiz (ör. 'Kayıt ol' gibi ikinci eylem). */
 .btn-ikincil {
   background: transparent;
   color: var(--accent);
@@ -802,11 +894,13 @@ body {
 }
 .btn-tehlike:hover:not(:disabled) { box-shadow: 0 6px 20px rgba(248,113,113,0.35); }
 .btn-tehlike:disabled { opacity: 0.45; cursor: not-allowed; }
+/* Üyelik mesaj kutusu: hata, başarı veya uyarı durumuna göre sınıf eklenir. */
 .auth-mesaj {
   margin: 0; padding: 10px 14px;
   border-radius: 10px; font-size: 14px; line-height: 1.5;
   border: 1px solid transparent;
 }
+/* Hata mesajı: kırmızı zemin ve kenarlık. */
 .auth-mesaj.hata { background: rgba(248,113,113,0.12); border-color: rgba(248,113,113,0.4); color: var(--danger); }
 .auth-mesaj.basari { background: rgba(110,231,183,0.12); border-color: rgba(110,231,183,0.4); color: var(--accent); }
 .auth-mesaj.uyari { background: rgba(129,140,248,0.12); border-color: rgba(129,140,248,0.4); color: var(--text); }
@@ -815,11 +909,13 @@ body {
 .auth-linkler a:hover { text-decoration: underline; }
 
 /* ── LOBBY: oturum çubuğu ── */
+/* Oturum çubuğu: giriş yapan kullanıcının adı ve çıkış düğmesi yan yana. */
 .kullanici-cubugu {
   display: flex; align-items: center; gap: 10px;
   font-size: 14px; color: var(--text-muted);
 }
 .kullanici-cubugu strong { color: var(--text); }
+/* Çıkış düğmesi ve Hesabım bağlantısı: link gibi görünür (zeminsiz, alt çizgili, yeşil). */
 .kullanici-cubugu button,
 .kullanici-cubugu a {
   background: none; border: none; color: var(--accent);

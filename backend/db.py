@@ -76,6 +76,7 @@ def simdi() -> datetime:
 
 def _baglan():
     # Parola asla loglanmaz; hata mesajlarında yalnız host/port/ad yer alır.
+    """Yeni bir MySQL bağlantısı açar. Sunucu, kullanıcı ve veritabanı adı ortam değişkenlerinden okunur. Bağlantı her işlemde yeniden açılıp kapatılır; havuz (pool) yoktur."""
     return pymysql.connect(
         host=os.getenv("DB_HOST", "127.0.0.1"),
         port=int(os.getenv("DB_PORT", "3306")),

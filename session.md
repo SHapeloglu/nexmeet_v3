@@ -65,3 +65,25 @@
 
 **Sıradaki adım:** PR #2 incelemesi sonucuna göre birleştirme; SMTP testi; git geçmişi temizliği için onay.
 
+## 2026-11-09 — Kontrol, test ve dağıtım (17:00'a kadar devralındı)
+
+**Yapılanlar:**
+- PR #2 (hesap silme) birleşti (`649414b`). İnceleme bulguları düzeltildi: `/hesabim` yönlendirmesi, silinen hesabın join token'larının iptali, endpoint'e oran sınırı, `mail_log` temizliği.
+- `main` testleri çalıştırıldı: geçici `mysql:8.0` konteyneri (`127.0.0.1:33999`, sunucuda), 47 test geçti. Konteyner, kopya dizin ve parola dosyası işlem sonunda silindi.
+- Canlı imaj `main`'den yeniden üretildi (`nexmeet:2026-11-09`, `4a7d826f3426`). İçerikte CSP başlığı, hesap silme ucu, `hesabim.html` var; TURN kimlik bilgisi yok.
+- Dağıtım: `nexmeet:latest` yeni imaja geçti. Önceki imaj `nexmeet:rollback-2026-11-08` olarak saklandı; `nexmeet:rollback-2026-10-21` duruyor.
+- Duman testi (konteyner ayağa kalktıktan sonra): `/giris` 200, `/` ve `/hesabim` oturumsuz yönlendirme, `/api/ben` ve hesap silme 401, dış HTTPS `/giris` 200.
+- SMTP sunucusuna bağlantı, STARTTLS ve AUTH teklifi doğrulandı; mail gönderilmedi.
+
+**Kararlar / neden:**
+- Dağıtım, daha önce onaylanan güvenlik düzeltmesinin üzerine main'in test edilmiş sürümünü eklemek için yapıldı; hesap silme ve TURN kaldırma canlıya gelsin diye. Eski imaj geri dönüş için saklı.
+- Git geçmişi yeniden yazılmadı: özgeçmiş verisi ve eski TURN parolası hâlâ geçmişte. Force-push, public repo için açık onay gerektiriyor.
+
+**Açık sorunlar:**
+- Kayıt/parola sıfırlama mailinin gerçekten ulaştığı denenmedi.
+- Tarayıcıda hesap silme ve giriş akışı elle denenmedi.
+- Git geçmişi temizliği onay bekliyor.
+- Konteynerler şu an durmuş (AutoSleep); smoke testten sonra uyku moduna geçti.
+
+**Sıradaki adım:** Git geçmişi temizliği için karar; gerçek mail akışının elle denenmesi.
+

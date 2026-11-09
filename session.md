@@ -42,3 +42,26 @@
 
 **Sıradaki adım:** Canlı DB kullanıcısı ve SMTP kurulumu; tarayıcı testi; dağıtım kararı.
 
+## 2026-11-08 — 2026-11-09 — Canlı sunucu denetimi, dağıtım ve repo senkronu
+
+**Yapılanlar:**
+- Sunucu (Contabo) salt okunur incelendi. Canlı kurulum Docker Compose (`/opt/nexmeet`); eski systemd birimleri disabled/inactive idi.
+- Canlı kod repoya alındı (PR #6). Docker imajında dosya indirme güvenlik başlıkları (`Content-Security-Policy: sandbox`, `nosniff`) yoktu; yeni imaj `nexmeet:2026-11-08` ile dağıtıldı. Eski imaj `nexmeet:rollback-2026-10-21` olarak saklandı.
+- Eski systemd birimleri ve `/root/nexmeet`, `/root/nexmeet-tts` yedek alınıp (`/root/backups/`) kaldırıldı.
+- Repo: `docker/` canlı kurulumla hizalandı (PR #3), `docker/backend/` kaldırıldı (PR #4), TTS kaynağı `tts-service/` altına eklendi (PR #5), TURN sabitleri ve `backend/tts/`, `backend/app.js` kaldırıldı (PR #7).
+- TTS API anahtarı 48 karakterden 64 hex karaktere yenilendi; yanlış anahtar 401, yeni anahtar 200.
+
+**Kararlar / neden:**
+- Güvenlik düzeltmesi için yeni imaj eski imajın yanında etiketlendi; geri dönüş tek komutla mümkün.
+- TURN sunucusu yok ve 3478 dinlenmiyor; sabit kimlik bilgisi kaldırıldı, yalnız STUN kaldı.
+- Dağıtım sırasında TTS anahtarı, konteynerler durdurulmuş halde yeniden oluşturularak değiştirildi; AutoSleep'in `docker start`'ı yeni ortam değişkenlerini kullanır.
+- Git geçmişi yeniden yazılmadı: özgeçmiş verisi ve eski TURN parolası geçmişte duruyor. Public repo için ayrı onay gerekiyor.
+
+**Açık sorunlar:**
+- SMTP ile gerçek mail gönderimi test edilmedi.
+- PR #2 (`hesap-sil`) incelemede; `auth.py` değiştiriyor.
+- Testler (`tests/`) MySQL gerektiriyor, çalıştırılmadı.
+- Konteynerler şu an açık; AutoSleep boşta kalınca durduracak.
+
+**Sıradaki adım:** PR #2 incelemesi sonucuna göre birleştirme; SMTP testi; git geçmişi temizliği için onay.
+

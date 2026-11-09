@@ -1,23 +1,25 @@
-version: '3.8'
-
+# NexMeet için Docker Compose dosyası.
+# Canlı kurulum bu sunucuda Docker Compose ile çalışır (/opt/nexmeet); bu dosya
+# yerel çalıştırma ve referans için o kurulumun karşılığıdır.
+#
+# Not: TTS servisi (nexmeet-tts) bu repoda değildir; ayrı olarak çalışır.
+# Backend, TTS_SERVICE_URL / TTS_API_KEY ile ona bağlanır.
+#
+# Çalıştırma (repo kökünde .env hazırlandıktan sonra):
+#   docker compose -f docker/docker-compose.yml up -d --build
 services:
   nexmeet:
     build:
       context: ..
       dockerfile: docker/Dockerfile
-    ports:
-      - "8000:8000"
+    image: nexmeet:latest
+    container_name: nexmeet
     restart: unless-stopped
-    environment:
-      - PYTHONUNBUFFERED=1
-      - SECRET_KEY=${SECRET_KEY}
-      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:8000}
-      - MAX_FILE_SIZE_MB=${MAX_FILE_SIZE_MB:-100}
+    env_file: ../.env
+    ports:
+      # Yalnızca localhost; dış erişim nginx üzerinden yapılır
+      - "127.0.0.1:8009:8009"
     volumes:
-      # Yüklenen dosyalar container dışında kalıcı olarak saklanır
-      - nexmeet_uploads:/app/uploads
-    env_file:
-      - ../.env
-
-volumes:
-  nexmeet_uploads:
+      # Yüklenen dosyalar repo kökündeki uploads/ klasöründe kalıcı tutulur
+      - ./../uploads:/app/uploads
+    mem_limit: 512m

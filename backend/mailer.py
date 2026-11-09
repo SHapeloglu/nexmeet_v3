@@ -21,6 +21,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 def _kac(metin: str) -> str:
+    """Metni HTML içine güvenle koymak için kaçırır (<, >, &, tırnak). Kullanıcı adı ve bağlantılar HTML'e bu fonksiyondan geçerek girmeli; yoksa HTML enjeksiyonu oluşur."""
     return html.escape(metin, quote=True)
 
 
@@ -89,6 +90,7 @@ def sifirlama_postasi(alici: str, ad: str, link: str) -> dict:
 
 
 def _dosyaya_yaz(posta: dict) -> None:
+    """MAIL_BACKEND=dosya iken postayı MAIL_DIR klasörüne (yoksa backend/mail_kutusu) .txt olarak yazar. Yalnız geliştirme ve test için; gerçek e-posta gitmez."""
     klasor = Path(os.getenv("MAIL_DIR", str(BASE_DIR / "mail_kutusu")))
     klasor.mkdir(parents=True, exist_ok=True)
     zaman = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
@@ -100,6 +102,7 @@ def _dosyaya_yaz(posta: dict) -> None:
 
 
 def _smtp_gonder(posta: dict) -> None:
+    """Postayı SMTP sunucusuna STARTTLS ile gönderir. SMTP_HOST yoksa RuntimeError fırlatır. Kullanıcı adı tanımlıysa giriş yapar. Düz metin ve HTML iki parça olarak eklenir; zaman aşımı 20 saniyedir."""
     host = os.getenv("SMTP_HOST", "")
     if not host:
         raise RuntimeError("SMTP_HOST tanımlı değil")

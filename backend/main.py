@@ -1,3 +1,7 @@
+"""NexMeet ana sunucusu (FastAPI). Uygulamanın giriş noktasıdır: sayfa yönlendirmeleri, join token üretimi, dosya yükleme ve indirme, WebSocket sinyalizasyonu (WebRTC offer, answer, ICE), uzak masaüstü kontrol oturumları ve TTS proxy uçları burada tanımlıdır.
+Üyelik uçları auth.py, veritabanı işleri db.py, e-posta gönderimi mailer.py dosyasındadır.
+Join token, dosya kayıtları ve oda durumu bellekte tutulur. Sunucu yeniden başlarsa silinir; bu yüzden tek süreçle (tek uvicorn worker) çalıştırılmalıdır.
+Çalıştırma: systemd servisi "uvicorn main:app" komutunu backend/ dizininden başlatır."""
 import json
 import uuid
 import logging
@@ -31,9 +35,12 @@ import db
 # ─── Config ──────────────────────────────────────────────────────────────────
 load_dotenv()
 
+# DİKKAT: Bu değişken kodda başka yerde kullanılmıyor. Join token'lar SECRET_KEY'den türetilmez; rastgele üretilip bellekte tutulur.
+# Sunucu yeniden başlarsa tüm token'lar ve kontrol oturumları silinir.
 SECRET_KEY    = os.getenv("SECRET_KEY", secrets.token_hex(32))
 RAW_ORIGINS   = os.getenv("ALLOWED_ORIGINS", "http://localhost:8000")
 ALLOWED_ORIGINS = [o.strip() for o in RAW_ORIGINS.split(",") if o.strip()]
+# Dosya boyut sınırı (bayt). MB cinsinden MAX_FILE_SIZE_MB ortam değişkeninden okunur; ayar yoksa 50 MB kullanılır.
 MAX_FILE_SIZE = int(os.getenv("MAX_FILE_SIZE_MB", "50")) * 1024 * 1024
 
 # İzin verilen MIME tipleri (executable türler yasaklı)
@@ -67,6 +74,7 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     # Üyelik tabloları. Başarısızsa uygulama yine açılır; üyelik uçları 503 döner.
+    """Uygulama açılırken ve kapanırken çalışan yaşam döngüsü. Açılışta üyelik tablolarını oluşturur. Veritabanı yoksa uygulama yine açılır; yalnız üyelik uçları 503 döner."""
     try:
         await asyncio.to_thread(db.sema_olustur)
         logger.info("Üyelik veritabanı hazır (%s:%s/%s).",
@@ -102,6 +110,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 @app.exception_handler(pymysql.MySQLError)
 async def veritabani_hatasi(_request: Request, exc: pymysql.MySQLError):
+    """Üyelik tarafındaki veritabanı hatalarını yakalar ve kullanıcıya 503 yanıtı döner. Ham hata metni istemciye gönderilmez, yalnız loglanır."""
     logger.error("Veritabanı hatası: %s", exc)
     return JSONResponse(
         status_code=503,
@@ -219,13 +228,16 @@ def validate_file(filename: str, content_type: str, content: bytes) -> str:
 
 # ─── Connection Manager ───────────────────────────────────────────────────────
 class ConnectionManager:
+    """Odalardaki WebSocket bağlantılarını, peer adlarını ve oda sohbet geçmişini bellekte tutan yardımcı sınıf. Bu sınıf tek bir sunucu süreci içinde çalışır."""
     def __init__(self):
+        """Boş oda sözlüklerini oluşturur. rooms: oda -> {peer_id: WebSocket}, peer_names: peer_id -> ad, chat_history: oda -> son 50 mesaj."""
         self.rooms: Dict[str, Dict[str, WebSocket]] = {}
         self.peer_names: Dict[str, str] = {}
         # Son 50 sohbet mesajını oda bazında sakla
         self.chat_history: Dict[str, list] = {}
 
     async def connect(self, websocket: WebSocket, room_id: str, peer_id: str, name: str):
+        """Peer'in WebSocket bağlantısını kabul eder ve odaya ekler. Oda yoksa önce oluşturulur, yani ilk katılan kişi odayı açar."""
         await websocket.accept()
         if room_id not in self.rooms:
             self.rooms[room_id] = {}
@@ -235,6 +247,7 @@ class ConnectionManager:
         logger.info(f"Peer {peer_id} ({name}) joined room {room_id}")
 
     def disconnect(self, room_id: str, peer_id: str):
+        """Peer'i odadan çıkarır. Oda boşalırsa odayı ve sohbet geçmişini de siler. Peer zaten yoksa hata vermez."""
         if room_id in self.rooms:
             self.rooms[room_id].pop(peer_id, None)
             if not self.rooms[room_id]:
@@ -244,6 +257,7 @@ class ConnectionManager:
         logger.info(f"Peer {peer_id} left room {room_id}")
 
     async def send_to_peer(self, room_id: str, peer_id: str, message: dict):
+        """Tek bir peer'a JSON mesajı gönderir. Peer yoksa ya da gönderim hata verirse sessizce geçer; hata yalnız loglanır."""
         if room_id in self.rooms and peer_id in self.rooms[room_id]:
             try:
                 await self.rooms[room_id][peer_id].send_json(message)
@@ -251,6 +265,7 @@ class ConnectionManager:
                 logger.error(f"Error sending to peer {peer_id}: {e}")
 
     async def broadcast_to_room(self, room_id: str, message: dict, exclude_peer: str = None):
+        """Odadaki herkese mesaj gönderir. exclude_peer verilirse o peer atlanır. Bir peer'e gönderim hata verirse diğerleri etkilenmez."""
         if room_id not in self.rooms:
             return
         for peer_id, ws in list(self.rooms[room_id].items()):
@@ -261,6 +276,7 @@ class ConnectionManager:
                     logger.error(f"Error broadcasting to peer {peer_id}: {e}")
 
     def get_room_peers(self, room_id: str) -> list:
+        """Odadaki peer'lerin {id, name} listesini döner. Oda yoksa boş liste döner."""
         if room_id not in self.rooms:
             return []
         return [
@@ -275,11 +291,13 @@ manager = ConnectionManager()
 # ─── HTTP Endpoints ───────────────────────────────────────────────────────────
 
 def _girise_yonlendir(yol: str) -> RedirectResponse:
+    """Oturumu olmayan kullanıcıyı /giris sayfasına 302 ile yönlendirir. Dönüş adresi next parametresinde taşınır, böylece girişten sonra aynı sayfaya dönülür."""
     return RedirectResponse(url="/giris?" + urlencode({"next": yol}), status_code=302)
 
 
 @app.get("/")
 async def root(request: Request):
+    """Ana sayfa. Oturum varsa uygulama arayüzünü (index.html) verir, yoksa giriş sayfasına yönlendirir."""
     if not await auth.oturum_var_mi(request):
         return _girise_yonlendir("/")
     return FileResponse(FRONTEND_DIR / "index.html")
@@ -287,6 +305,7 @@ async def root(request: Request):
 
 @app.get("/room/{room_id}")
 async def get_room(request: Request, room_id: str):
+    """Oda sayfası. Oturum yoksa giriş sayfasına yönlendirir ve dönüş adresi olarak bu odayı verir."""
     if not await auth.oturum_var_mi(request):
         return _girise_yonlendir(f"/room/{room_id}")
     return FileResponse(FRONTEND_DIR / "index.html")
@@ -295,6 +314,7 @@ async def get_room(request: Request, room_id: str):
 @app.get("/api/saglik")
 async def saglik():
     # Veritabanı durumunu canlı kontrol eder; toplantı servisi DB'den bağımsız çalışır.
+    """Sağlık kontrolü ucu. Servis çalışıyorsa her zaman 'tamam' döner. Veritabanı durumu ayrı bir alanda (db) bildirilir; izleme araçları için kullanılır."""
     try:
         await asyncio.to_thread(db.kontrol)
         db_durum = "tamam"
@@ -307,6 +327,7 @@ async def saglik():
 @app.get("/api/room/{room_id}/info")
 async def room_info(room_id: str):
     # Katılımcı adları/kimlikleri tokensiz verilmez; yalnız sayı döner.
+    """Odanın yalnız katılımcı sayısını döner. Katılımcı adları ve kimlikleri token olmadan verilmez."""
     return {"room_id": room_id, "peer_count": len(manager.get_room_peers(room_id))}
 
 
@@ -410,7 +431,15 @@ async def download_file(request: Request, file_id: str, token: str):
     if not os.path.exists(meta["path"]):
         raise HTTPException(status_code=404, detail="Dosya sunucudan silinmiş")
 
-    return FileResponse(meta["path"], filename=meta["name"], media_type=meta["type"])
+    # media_type yükleyenin gönderdiği değerdir. Tarayıcıda çalışabilen türler (HTML, SVG, XML, JS) her zaman düz ikili veri olarak sunulur;
+    # ayrıca nosniff (tür tahmini yapma), indirme olarak sun (attachment) ve sandbox CSP başlıkları eklenir.
+    tur = (meta["type"] or "application/octet-stream").lower()
+    if any(t in tur for t in ("html", "svg", "xml", "javascript", "ecmascript")):
+        tur = "application/octet-stream"
+    return FileResponse(
+        meta["path"], filename=meta["name"], media_type=tur, content_disposition_type="attachment",
+        headers={"X-Content-Type-Options": "nosniff", "Content-Security-Policy": "sandbox"},
+    )
 
 
 @app.get("/api/room/{room_id}/files")
@@ -434,6 +463,9 @@ async def room_files(room_id: str, token: str):
 
 @app.websocket("/ws/agent/{agent_id}")
 async def agent_endpoint(websocket: WebSocket, agent_id: str):
+    """Uzak masaüstü ajanının WebSocket bağlantısı (/ws/agent/{agent_id}). Ajan yalnız onaylanmış bir kontrol oturumu ve o oturuma özel tek kullanımlık ajan anahtarıyla bağlanabilir. Ajanın gönderdiği ekran kareleri (frame) kontrolcüye iletilir."""
+    # DİKKAT: Ajan anahtarı bağlantı adresinde (query) taşınır. Sunucu veya proxy erişim logu adresi yazarsa anahtar loglara düşebilir.
+    # Tek kullanımlık olması ve kısa ömürlü oturum bu riski sınırlar.
     key        = websocket.query_params.get("key", "")
     session_id = websocket.query_params.get("session_id", "")
     session    = control_sessions.get(session_id)
@@ -499,6 +531,7 @@ async def agent_endpoint(websocket: WebSocket, agent_id: str):
 # Not: /ws/agent/{id}, /ws/{room_id}/{peer_id} rotasından ÖNCE tanımlı olmalı; yoksa onun tarafından yutulur.
 @app.websocket("/ws/{room_id}/{peer_id}")
 async def websocket_endpoint(websocket: WebSocket, room_id: str, peer_id: str):
+    """Oda sinyalizasyon WebSocket'i (/ws/{room_id}/{peer_id}). Join token ile katılımcıyı doğrular. WebRTC offer, answer ve ICE mesajlarını hedef peer'e iletir; sohbet, medya durumu ve paylaşım olaylarını odaya yayınlar. Tanınmayan mesaj tipleri sessizce yok sayılır."""
     token = websocket.query_params.get("token", "")
     entry = validate_join_token(token)
 
@@ -657,6 +690,7 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, peer_id: str):
 
 @app.websocket("/ws/control/{session_id}/{controller_peer_id}")
 async def control_endpoint(websocket: WebSocket, session_id: str, controller_peer_id: str):
+    """Uzak kontrolcünün WebSocket'i (/ws/control/...). Yalnız kontrol oturumunu açan kişi ve onaylanmış oturum için çalışır. Fare ve klavye komutlarını ajana iletir. stop-control gelirse ya da bağlantı koparsa ajana durdurma mesajı gider."""
     token   = websocket.query_params.get("token", "")
     session = control_sessions.get(session_id)
 
@@ -730,6 +764,7 @@ async def control_endpoint(websocket: WebSocket, session_id: str, controller_pee
 @app.post("/api/control/request")
 @limiter.limit("10/minute")
 async def request_control(request: Request, data: dict):
+    """Uzak kontrol isteği başlatır. Yeni bir kontrol oturumu açar ve hedef peer odadaysa ona istek gönderir. Dönen sent alanı isteğin hedefe ulaşıp ulaşmadığını söyler."""
     token = data.get("token", "")
     entry = validate_join_token(token)
     if not entry:
@@ -770,6 +805,7 @@ async def request_control(request: Request, data: dict):
 
 @app.post("/api/control/respond")
 async def respond_control(data: dict):
+    """Hedef peer'in kontrol isteğine onay ya da red verdiği uç. Yalnız oturumun hedef peer'i çağırabilir; başkası çağırırsa 403 döner."""
     token   = data.get("token", "")
     entry   = validate_join_token(token)
     if not entry:
@@ -797,6 +833,7 @@ async def respond_control(data: dict):
 
 @app.post("/api/control/stop")
 async def stop_control(data: dict):
+    """Kontrol oturumunu sonlandırır. Yalnız kontrolcü ya da hedef peer durdurabilir. Oturum yoksa da başarılı yanıt döner."""
     token = data.get("token", "")
     entry = validate_join_token(token)
     if not entry:
@@ -854,6 +891,7 @@ async def _tts_istek(method: str, path: str, timeout: float, **kwargs):
 @app.post("/api/tts/synthesize")
 @limiter.limit("30/minute")
 async def tts_synthesize(request: Request, data: dict):
+    """Çevrilmiş metni TTS servisine gönderip sentezlenmiş sesi döner. Yalnız geçerli join token ile çalışır. Zaman aşımı 30 saniyedir."""
     token = data.get("token", "")
     entry = validate_join_token(token)
     if not entry:
@@ -870,6 +908,7 @@ async def tts_synthesize(request: Request, data: dict):
 @app.post("/api/tts/voice-profile")
 @limiter.limit("5/minute")
 async def tts_voice_profile(request: Request, data: dict):
+    """Kişinin kendi sesinden ses profili çıkarmak için TTS servisine istek atar. İşlem ağır olduğundan dakikada 5 istekle sınırlıdır ve zaman aşımı 60 saniyedir. Canlı kurulumda ses klonlama kullanılmıyor; bu ucun servis tarafında karşılığı olmayabilir."""
     token = data.get("token", "")
     entry = validate_join_token(token)
     if not entry:
@@ -882,6 +921,7 @@ async def tts_voice_profile(request: Request, data: dict):
 
 @app.get("/api/tts/voice-profile/status")
 async def tts_voice_profile_status(request: Request, token: str):
+    """Ses profilinin hazır olup olmadığını TTS servisinden sorgular. Profil yalnız token sahibinin peer_id değerine göre aranır."""
     entry = validate_join_token(token)
     if not entry:
         raise HTTPException(status_code=401, detail="Geçersiz token.")

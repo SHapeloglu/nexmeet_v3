@@ -2,7 +2,7 @@
 
 ## 🔜 Sıradaki
 
-- [ ] 🟠 **Üyelik canlı, SMTP doğrulanmadı:** veritabanı bağlantısı canlı (`mysql-ortak:3306/nexmeet`, konteyner logu doğruladı). Gerçek mail gönderimi henüz test edilmedi; `nexmeet.env` SMTP ayarlarının çalıştığı kanıtlanmalı. Hesap silme arayüzü PR #2 (`hesap-sil`) ile geliyor; inceleme bekliyor.
+- [ ] 🟠 **Üyelik canlı, gerçek mail gönderimi test edilmedi:** veritabanı bağlantısı canlı (`mysql-ortak:3306/nexmeet`). SMTP sunucusuna bağlantı, STARTTLS ve AUTH teklifi doğrulandı (2026-11-09, mail gönderilmedi). Kayıt/parola sıfırlama mailinin gerçekten ulaştığı tarayıcı/mail kutusunda henüz denenmedi.
 - [ ] 🔴 **Git geçmişinde kişisel veri ve eski TURN parolası:** özgeçmiş (telefon + e-posta) ve `nexmeet123` geçmişte duruyor. Temizlik için `git filter-repo` + force push gerekir; public repo olduğu için ayrıca onay istiyor. Karar bekliyor.
 - [x] 2026-11-09 ✅ ~~**TURN fiilen yok**~~ — sabit kullanıcı/şifre `app.js`'ten kaldırıldı (PR #7); yalnız STUN kullanılıyor. Coturn kurulumu `backlog.md`'de.
 
@@ -36,6 +36,7 @@ _(şu anda boş)_
 
 ## ✅ Tamamlanan
 
+- [x] 2026-11-09 — Hesap silme (PR #2) birleşti; 47 test (`tests/`) geçti (geçici MySQL konteyneri, sunucuda, işlem sonrası silindi). Main sürümü `nexmeet:2026-11-09` olarak dağıtıldı; önceki imaj `nexmeet:rollback-2026-11-08`. TURN kimlik bilgisi ve hesap silme artık canlıda.
 - [x] 2026-11-09 — Sunucu kodu repoya alındı (PR #6); docs, temizlik, TTS kaynağı ve TURN düzeltmesi PR #3, #4, #5, #7 ile birleşti. Canlı TTS anahtarı yenilendi; eski systemd birimleri ve `/root/nexmeet`, `/root/nexmeet-tts` yedek alınıp kaldırıldı (yedekler `/root/backups/`).
 
 - [x] 2026-10-21 — E-posta doğrulamalı üyelik: kayıt, doğrulama, oturum (30 gün), parola sıfırlama, hesap silme, join-token'ın hesaptan ad alması; 45 test geçti (`tests/`). Commit edildi, push/dağıtım yok.

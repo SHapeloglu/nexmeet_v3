@@ -29,7 +29,8 @@ Ortam değişkenleri: `SECRET_KEY, ALLOWED_ORIGINS, MAX_FILE_SIZE_MB, UPLOADS_DI
 
 - **Dağıtım:** Canlı yol Docker'dır. `README.md` ve `architect.md` bunu anlatır; repodaki `docker/` klasörü canlı kurulumun yerel karşılığıdır (TTS hariç).
 - Ses klonlama yok: TTS CPU'da Kokoro ONNX ile sabit `af_heart` sesiyle çalışır.
-- `backend/tts/` (torch + whisper, `/home/ubuntu/...` yolları) **kullanılmıyor** — `main.py` import etmiyor; EC2 tasarımından kalıntı. `backend/app.js` frontend `app.js`'in eski kopyası, - Ajan iki yerde: `agent/` (kaynak) ve `frontend/static/agent/` (kullanıcıya indirilen kopya) — ikisi farklı; ajan değişince indirilen kopyayı güncelle.
+- `backend/tts/` (torch + whisper, `/home/ubuntu/...` yolları) **kullanılmıyor** — `main.py` import etmiyor; EC2 tasarımından kalıntı. `backend/app.js` frontend `app.js`'in eski kopyası.
+- Ajan iki yerde: `agent/` (kaynak) ve `frontend/static/agent/` (kullanıcıya indirilen kopya) — ikisi farklı; ajan değişince indirilen kopyayı güncelle.
 - Join token'lar ve kontrol oturumları bellekte tutulur; her yeniden başlatma (ör. `docker restart`) hepsini geçersiz kılar. `SECRET_KEY` okunur ama hiçbir yerde kullanılmaz (token'lar `secrets.token_urlsafe` ile rastgele üretilir, imzalanmaz); tanımsızsa değeri yine de her başlatmada rastgele üretilir ve etkisizdir.
 - **Public repo:** `uploads/` `.gitignore`'da ama içindeki 2 kullanıcı dosyası (PDF, JPG) izleniyor; `.env` asla commit edilmez, IP/anahtar yazma.
 - Frontend tek dosya (`frontend/static/js/app.js`, ~1.650 satır); state nesnesi en üstte.

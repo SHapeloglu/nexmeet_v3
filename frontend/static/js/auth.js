@@ -3,8 +3,8 @@
 (function () {
   'use strict';
 
-  // Sunucudaki YONLENDIRME_RE ile aynı kural: yalnız "/" veya "/room/<id>"
-  const YONLENDIRME_RE = /^\/(room\/[^/\\?#%\s\x00-\x1f\x7f]{1,64})?$/;
+  // Sunucudaki YONLENDIRME_RE ile aynı kural (backend/auth.py): "/", "/room/<id>" veya "/hesabim"
+  const YONLENDIRME_RE = /^\/(room\/[^/\\?#%\s\x00-\x1f\x7f]{1,64}|hesabim)?$/;
 
   function guvenliYonlendirme(ham) {
     return ham && YONLENDIRME_RE.test(ham) ? ham : '/';

@@ -596,6 +596,16 @@ class ParolaIstek(BaseModel):
     parola: str = ""
 
 
+# Hesap silindiğinde çağrılan geri çağrılar (ör. main.py join token temizliği).
+# auth.py main.py'yi import etmez; kayıt main.py tarafından yapılır.
+_hesap_silindi_kancalari = []
+
+
+def hesap_silindi_bildir(user_id: int) -> None:
+    for kanca in list(_hesap_silindi_kancalari):
+        kanca(user_id)
+
+
 def _hesap_sil_islem(user_id: int, parola: str) -> Optional[str]:
     with db.islem() as cur:
         cur.execute("SELECT * FROM users WHERE id = %s", (user_id,))
@@ -609,10 +619,14 @@ def _hesap_sil_islem(user_id: int, parola: str) -> Optional[str]:
             _basarisiz_giris(cur, row, simdi)
             return "parola"
         cur.execute("DELETE FROM users WHERE id = %s", (user_id,))  # oturum ve token'lar CASCADE ile silinir
+        # Kişisel e-posta, kayıt/doğrulama mail günlüğünde de tutulmaz
+        cur.execute("DELETE FROM mail_log WHERE email = %s", (row["email"],))
+        hesap_silindi_bildir(user_id)  # bellekteki join token'ları da düşer
         return None
 
 
 @router.post("/api/auth/hesabi-sil")
+@limiter.limit("5/minute")
 async def hesabi_sil(request: Request, istek: ParolaIstek):
     origin_kontrol(request)
     kullanici = await oturumlu_kullanici(request)

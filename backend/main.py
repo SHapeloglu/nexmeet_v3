@@ -147,20 +147,31 @@ control_sessions: Dict[str, dict] = {}
 agent_connections: Dict[str, WebSocket] = {}
 
 # ─── Join token'ları (oda başına basit token) ─────────────────────────────────
-# token -> {room_id, peer_id, name, expires_at}
+# token -> {room_id, peer_id, name, user_id, expires_at}
 join_tokens: Dict[str, dict] = {}
 
 
-def generate_join_token(room_id: str, peer_id: str, name: str) -> str:
+def generate_join_token(room_id: str, peer_id: str, name: str, user_id: Optional[int] = None) -> str:
     """Oda bağlantısı için kısa süreli token oluştur."""
     token = secrets.token_urlsafe(32)
     join_tokens[token] = {
         "room_id": room_id,
         "peer_id": peer_id,
         "name": name,
+        "user_id": user_id,
         "expires_at": time.time() + 3600,  # 1 saat geçerli
     }
     return token
+
+
+def _hesap_silinince_tokenlari_sil(user_id: int) -> None:
+    """Hesap silindiğinde o kullanıcıya ait join token'larını geçersiz kıl."""
+    silinecek = [t for t, v in list(join_tokens.items()) if v.get("user_id") == user_id]
+    for t in silinecek:
+        join_tokens.pop(t, None)
+
+
+auth._hesap_silindi_kancalari.append(_hesap_silinince_tokenlari_sil)
 
 
 def validate_join_token(token: str) -> Optional[dict]:
@@ -177,7 +188,7 @@ def validate_join_token(token: str) -> Optional[dict]:
 def cleanup_expired_tokens():
     """Süresi dolmuş token'ları temizle."""
     now = time.time()
-    expired = [t for t, v in join_tokens.items() if now > v["expires_at"]]
+    expired = [t for t, v in list(join_tokens.items()) if now > v["expires_at"]]
     for t in expired:
         del join_tokens[t]
     # Token ömrünü (1 saat) aşan kontrol oturumları da düşer
@@ -318,7 +329,7 @@ async def create_join_token(request: Request, data: dict):
     peer_id = secrets.token_urlsafe(9)
 
     cleanup_expired_tokens()
-    token = generate_join_token(room_id, peer_id, name)
+    token = generate_join_token(room_id, peer_id, name, kullanici["id"])
     return {"token": token, "peer_id": peer_id}
 
 

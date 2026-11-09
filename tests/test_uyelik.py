@@ -413,8 +413,21 @@ def test_hesap_silme(istemci):
     assert r.status_code == 403
     assert db_satir("SELECT COUNT(*) AS n FROM users")["n"] == 1
 
+    # Çapraz site istek: Origin izinli değilse hesap silinmeden 403 dönmeli
+    r = c.post(
+        "/api/auth/hesabi-sil",
+        json={"parola": PAROLA},
+        headers={"Origin": "https://kotu.example"},
+    )
+    assert r.status_code == 403
+    assert db_satir("SELECT COUNT(*) AS n FROM users")["n"] == 1
+
     r = c.post("/api/auth/hesabi-sil", json={"parola": PAROLA})
     assert r.status_code == 200
+    # Oturum çerezi istemcide de silinmeli (max-age=0)
+    set_cookie = r.headers.get("set-cookie", "").lower()
+    assert "nexmeet_oturum=" in set_cookie
+    assert "max-age=0" in set_cookie
     assert db_satir("SELECT COUNT(*) AS n FROM users")["n"] == 0
     assert db_satir("SELECT COUNT(*) AS n FROM sessions")["n"] == 0
     assert c.get("/api/ben").status_code == 401

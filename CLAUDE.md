@@ -1,6 +1,6 @@
 # CLAUDE.md — NexMeet (v3, canlı)
 
-WebRTC tabanlı video konferans: oda + katılımcı başına 1 saatlik join token, WebSocket sinyalizasyon (offer/answer/ICE), sohbet (son 50 mesaj), dosya paylaşımı (100 MB, MIME doğrulama, 1 saat sonra otomatik silme), tarayıcıda kayıt (WebM), ekran paylaşımı, **uzak masaüstü kontrolü** (indirilebilir Python ajan) ve **anlık konuşma çevirisi** (TR → EN, ayrı TTS servisi üzerinden).
+WebRTC tabanlı video konferans: oda + katılımcı başına 1 saatlik join token, WebSocket sinyalizasyon (offer/answer/ICE), sohbet (son 50 mesaj), dosya paylaşımı (50 MB, MIME doğrulama, 1 saat sonra otomatik silme), tarayıcıda kayıt (WebM), ekran paylaşımı, **uzak masaüstü kontrolü** (indirilebilir Python ajan) ve **anlık konuşma çevirisi** (TR → EN, ayrı TTS servisi üzerinden).
 
 - GitHub: https://github.com/SHapeloglu/nexmeet_v3 — **PUBLIC repo**
 - **Canlı:** Docker Compose, sunucuda `/opt/nexmeet` (repo dışı). Konteynerler: `nexmeet` (uvicorn, `127.0.0.1:8009`, ortam `nexmeet.env`, yüklemeler `./uploads` volume) ve `nexmeet-tts` (ortam `tts.env`). İkisi de `restart unless-stopped`; ağlar: `nexmeet` ve dış `ortak-db`. Public adres nginx arkasında: `nexmeet.powerbiegitimi.com`. Sunucuda otomatik uyku (AutoSleep) mekanizması var.
@@ -30,7 +30,7 @@ Ortam değişkenleri: `SECRET_KEY, ALLOWED_ORIGINS, MAX_FILE_SIZE_MB, UPLOADS_DI
 - **Dağıtım:** Canlı yol Docker'dır. `README.md` ve `architect.md` bunu anlatır; repodaki `docker/` klasörü canlı kurulumun yerel karşılığıdır (TTS hariç).
 - Ses klonlama yok: TTS CPU'da Kokoro ONNX ile sabit `af_heart` sesiyle çalışır.
 - `backend/tts/` (torch + whisper, `/home/ubuntu/...` yolları) **kullanılmıyor** — `main.py` import etmiyor; EC2 tasarımından kalıntı. `backend/app.js` frontend `app.js`'in eski kopyası, - Ajan iki yerde: `agent/` (kaynak) ve `frontend/static/agent/` (kullanıcıya indirilen kopya) — ikisi farklı; ajan değişince indirilen kopyayı güncelle.
-- `SECRET_KEY` ortamda yoksa her başlatmada rastgele üretilir → tüm join token'lar geçersiz olur.
+- Join token'lar ve kontrol oturumları bellekte tutulur; her yeniden başlatma (ör. `docker restart`) hepsini geçersiz kılar. `SECRET_KEY` okunur ama hiçbir yerde kullanılmaz (token'lar `secrets.token_urlsafe` ile rastgele üretilir, imzalanmaz); tanımsızsa değeri yine de her başlatmada rastgele üretilir ve etkisizdir.
 - **Public repo:** `uploads/` `.gitignore`'da ama içindeki 2 kullanıcı dosyası (PDF, JPG) izleniyor; `.env` asla commit edilmez, IP/anahtar yazma.
 - Frontend tek dosya (`frontend/static/js/app.js`, ~1.650 satır); state nesnesi en üstte.
 - Oturum sonunda `session.md`'ye kayıt düş, `task.md`'yi güncelle.

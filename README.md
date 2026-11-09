@@ -64,7 +64,7 @@ nexmeet/
 └── .env.example
 ```
 
-> `backend/tts/` ve `backend/app.js` eski sürümlerden kalmadır, canlıda kullanılmaz. `docker/` (Dockerfile + compose) canlı uygulama servisinin yerel karşılığıdır; canlı Dockerfile'lar, gerçek compose dosyası ve ortam dosyaları sunucuda `/opt/nexmeet` altındadır. TTS servisinin kaynağı yalnızca sunucudadır.
+> `backend/tts/` ve `backend/app.js` eski sürümlerden kalmadır, canlıda kullanılmaz. `docker/` (Dockerfile + compose) canlı uygulama servisinin yerel karşılığıdır; canlı Dockerfile'lar, gerçek compose dosyası ve ortam dosyaları sunucuda `/opt/nexmeet` altındadır. TTS servisinin kaynağı `tts-service/` altındadır.
 
 ---
 
@@ -211,7 +211,7 @@ docker logs --tail 100 nexmeet-tts     # TTS servisi logu
 
 ## 🗂️ İlgili
 
-TTS servisi ayrı bir projedir (`nexmeet-tts`): faster-whisper tiny + yerel çeviri + Kokoro ONNX, yalnızca CPU. Kaynak kodu bu repoda değildir; yalnızca sunucudadır.
+TTS servisi ayrı bir projedir (`nexmeet-tts`): faster-whisper tiny + yerel çeviri + Kokoro ONNX, yalnızca CPU. Kaynak kodu `tts-service/` altındadır (model dosyaları repoda değildir).
 
 ## 🏷️ Lisans
 

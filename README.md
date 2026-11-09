@@ -74,7 +74,7 @@ nexmeet/
 
 | Değişken | Açıklama |
 |----------|----------|
-| `SECRET_KEY` | Gizli anahtar (≥ 32 karakter). Tanımsızsa her başlatmada rastgele üretilir ve token'lar geçersiz olur |
+| `SECRET_KEY` | Okunur ama token imzalamada kullanılmaz; join token'lar bellekte tutulduğundan her yeniden başlatma token'ları geçersiz kılar |
 | `ALLOWED_ORIGINS` | CORS için izinli origin'ler (virgülle ayrılmış) |
 | `MAX_FILE_SIZE_MB` | Yükleme sınırı (varsayılan 50; nginx `client_max_body_size` ile aynı olmalı) |
 | `UPLOADS_DIR` | Yüklenen dosyaların klasörü |

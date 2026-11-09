@@ -20,7 +20,7 @@ nginx (nexmeet.powerbiegitimi.com) → FastAPI backend/main.py (Docker konteyner
 ## Backend (`backend/main.py`)
 
 - Durum bellekte (odalar, peer'lar, paylaşılan dosyalar, kontrol oturumları) — tek süreç; yeniden başlatmada sıfırlanır.
-- Token: `generate_join_token` / `validate_join_token` (`SECRET_KEY` ile imzalı, 1 saat), `cleanup_expired_tokens`.
+- Token: `generate_join_token` / `validate_join_token` (`secrets.token_urlsafe` ile rastgele, bellekte `join_tokens` sözlüğünde, 1 saat; `SECRET_KEY` kullanılmaz), `cleanup_expired_tokens`.
 - Dosya: `validate_file` (uzantı + MIME + boyut), `auto_delete_file` (`FILE_TTL_SECONDS = 3600`).
 - CORS: `ALLOWED_ORIGINS`.
 

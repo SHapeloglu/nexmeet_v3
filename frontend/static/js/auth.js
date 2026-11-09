@@ -9,9 +9,8 @@
 (function () {
   'use strict';
 
-  // Sunucudaki YONLENDIRME_RE ile aynı kural: yalnız "/" veya "/room/<id>"
-  // Sunucudaki YONLENDIRME_RE ile aynı kural. Yalnızca '/' ya da '/room/<kod>' kabul edilir; bu sayede giriş sonrası başka bir siteye yönlendirme yapılamaz (açık yönlendirme koruması).
-  const YONLENDIRME_RE = /^\/(room\/[^/\\?#%\s\x00-\x1f\x7f]{1,64})?$/;
+  // Sunucudaki YONLENDIRME_RE ile aynı kural (backend/auth.py): "/", "/room/<id>" veya "/hesabim". Yalnızca bu biçimler kabul edilir; böylece giriş sonrası başka bir siteye yönlendirme yapılamaz (açık yönlendirme koruması).
+  const YONLENDIRME_RE = /^\/(room\/[^/\\?#%\s\x00-\x1f\x7f]{1,64}|hesabim)?$/;
 
   /**
    * Giriş sonrası gidilecek adresi güvenli hale getirir.

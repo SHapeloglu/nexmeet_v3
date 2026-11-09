@@ -18,12 +18,13 @@ import unicodedata
 from datetime import timedelta
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlencode
 
 import pymysql
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -64,7 +65,7 @@ _SAHTE_HASH = PH.hash(secrets.token_urlsafe(24))
 
 EPOSTA_RE = re.compile(r"[^@\s]{1,64}@[^@\s]+\.[^@\s]{2,}")
 # Güvenli göreli yönlendirme: "/" veya "/room/<id>" (eğik çizgi, ters eğik, sorgu, kaçış içermez)
-YONLENDIRME_RE = re.compile(r"/(room/[^/\\?#%\s\x00-\x1f\x7f]{1,64})?")
+YONLENDIRME_RE = re.compile(r"/(room/[^/\\?#%\s\x00-\x1f\x7f]{1,64}|hesabim)?")
 
 
 # ─── Yardımcılar ─────────────────────────────────────────────────────────────
@@ -323,6 +324,14 @@ async def sayfa_sifre_unuttum():
 async def sayfa_sifre_sifirla():
     """Yeni parola belirleme sayfasını (sifre_sifirla.html) döner. Sıfırlama bağlantısı bu sayfaya gelir."""
     return FileResponse(FRONTEND_DIR / "sifre_sifirla.html")
+
+
+@router.get("/hesabim")
+async def sayfa_hesabim(request: Request):
+    # Oturumsuz ziyaret girişe yönlenir; giriş sonrası dönüş hedefi YONLENDIRME_RE ile doğrulanır
+    if not await oturum_var_mi(request):
+        return RedirectResponse(url="/giris?" + urlencode({"next": "/hesabim"}), status_code=302)
+    return FileResponse(FRONTEND_DIR / "hesabim.html")
 
 
 # ─── Kayıt ve doğrulama ──────────────────────────────────────────────────────
@@ -636,6 +645,16 @@ class ParolaIstek(BaseModel):
     parola: str = ""
 
 
+# Hesap silindiğinde çağrılan geri çağrılar (ör. main.py join token temizliği).
+# auth.py main.py'yi import etmez; kayıt main.py tarafından yapılır.
+_hesap_silindi_kancalari = []
+
+
+def hesap_silindi_bildir(user_id: int) -> None:
+    for kanca in list(_hesap_silindi_kancalari):
+        kanca(user_id)
+
+
 def _hesap_sil_islem(user_id: int, parola: str) -> Optional[str]:
     """Parolayı doğrulayıp hesabı siler. Dönüş: None (başarılı), parola (yanlış parola), kilit (hesap kilitli) ya da gecersiz (kullanıcı yok)."""
     with db.islem() as cur:
@@ -650,10 +669,14 @@ def _hesap_sil_islem(user_id: int, parola: str) -> Optional[str]:
             _basarisiz_giris(cur, row, simdi)
             return "parola"
         cur.execute("DELETE FROM users WHERE id = %s", (user_id,))  # oturum ve token'lar CASCADE ile silinir
+        # Kişisel e-posta, kayıt/doğrulama mail günlüğünde de tutulmaz
+        cur.execute("DELETE FROM mail_log WHERE email = %s", (row["email"],))
+        hesap_silindi_bildir(user_id)  # bellekteki join token'ları da düşer
         return None
 
 
 @router.post("/api/auth/hesabi-sil")
+@limiter.limit("5/minute")
 async def hesabi_sil(request: Request, istek: ParolaIstek):
     """Hesap silme ucu. Kullanıcının parolasını ister; yanlışsa 403, kilitliyse 429 döner. Başarılıysa hesap ve tüm oturumlar silinir."""
     origin_kontrol(request)

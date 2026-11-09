@@ -413,8 +413,21 @@ def test_hesap_silme(istemci):
     assert r.status_code == 403
     assert db_satir("SELECT COUNT(*) AS n FROM users")["n"] == 1
 
+    # Çapraz site istek: Origin izinli değilse hesap silinmeden 403 dönmeli
+    r = c.post(
+        "/api/auth/hesabi-sil",
+        json={"parola": PAROLA},
+        headers={"Origin": "https://kotu.example"},
+    )
+    assert r.status_code == 403
+    assert db_satir("SELECT COUNT(*) AS n FROM users")["n"] == 1
+
     r = c.post("/api/auth/hesabi-sil", json={"parola": PAROLA})
     assert r.status_code == 200
+    # Oturum çerezi istemcide de silinmeli (max-age=0)
+    set_cookie = r.headers.get("set-cookie", "").lower()
+    assert "nexmeet_oturum=" in set_cookie
+    assert "max-age=0" in set_cookie
     assert db_satir("SELECT COUNT(*) AS n FROM users")["n"] == 0
     assert db_satir("SELECT COUNT(*) AS n FROM sessions")["n"] == 0
     assert c.get("/api/ben").status_code == 401
@@ -426,6 +439,23 @@ def test_hesap_silme(istemci):
 def test_hesap_silme_girissiz_401(istemci):
     r = istemci.post("/api/auth/hesabi-sil", json={"parola": PAROLA})
     assert r.status_code == 401
+
+
+def test_hesabim_sayfasi_girissiz_girise_yonlenir(istemci):
+    r = istemci.get("/hesabim", follow_redirects=False)
+    assert r.status_code == 302
+    assert r.headers["location"] == "/giris?next=%2Fhesabim"
+
+
+def test_hesabim_sayfasi_girisli_acilir(istemci):
+    c = istemci
+    kayit_ve_dogrula(c)
+    assert giris(c).status_code == 200
+    r = c.get("/hesabim", follow_redirects=False)
+    assert r.status_code == 200
+    assert 'id="hesapSilForm"' in r.text
+    assert 'id="silBtn"' in r.text
+    assert "/static/js/hesabim.js" in r.text
 
 
 def test_cikis_oturumu_db_den_siler(istemci):

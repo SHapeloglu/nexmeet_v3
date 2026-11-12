@@ -18,6 +18,7 @@ WebRTC tabanlı video konferans: **anlık konuşma çevirisi (TR → EN)**, **uz
 | 💬 Sohbet | Oda geçmişli (son 50 mesaj) |
 | 🔴 Toplantı Kaydı | Tarayıcıda yerel kayıt, WebM indirme |
 | 🔒 Token Tabanlı Erişim | Katılımcı başına 1 saatlik join token; `peer_id` sunucuda üretilir |
+| 👤 Üyelik | E-posta doğrulamalı kayıt; toplantıya yalnız giriş yapmış üyeler katılır |
 
 ---
 
@@ -29,13 +30,14 @@ Tarayıcı (frontend/index.html + static/js/app.js)
   │ 2) WS /ws/{room}/{peer}   (sinyalizasyon, sohbet, durum)
   │ 3) WebRTC P2P             (medya)
   ▼
-nginx → FastAPI (backend/main.py, Docker konteyneri: nexmeet, 127.0.0.1:8009)
+nginx → FastAPI (backend/main.py + auth.py, Docker konteyneri: nexmeet, 127.0.0.1:8009)
   ├─ /api/upload, /api/download, /api/room/{id}/files   → uploads/ (TTL 1 saat)
   ├─ WS /ws/agent/{id}                ← uzak kontrol ajanı (kontrol edilen bilgisayar)
   ├─ WS /ws/control/{oturum}/{peer}   ← kontrol eden tarayıcı
   ├─ /api/control/request|respond|stop
+  ├─ /api/auth/*, /giris, /kayit …    → MySQL (üyelik) + SMTP (doğrulama ve sıfırlama postaları)
   └─ /api/tts/*  ──HTTP + x-api-key──►  nexmeet-tts (Docker konteyneri)
-                                         faster-whisper (STT) → çeviri → Kokoro ONNX (TTS), CPU
+                                         faster-whisper (STT) → Argos (TR→EN) → Kokoro ONNX (TTS), CPU
 ```
 
 Durum bellekte tutulur (odalar, kontrol oturumları, paylaşılan dosyalar); servis yeniden başladığında sıfırlanır. Ayrıntı: `architect.md`.
@@ -47,24 +49,30 @@ Durum bellekte tutulur (odalar, kontrol oturumları, paylaşılan dosyalar); ser
 ```
 nexmeet/
 ├── backend/
-│   ├── main.py              # FastAPI uygulaması — tüm uç noktalar
+│   ├── main.py              # FastAPI: oda, sinyalizasyon, dosya, uzak kontrol, TTS proxy
+│   ├── auth.py              # Üyelik uçları (kayıt, giriş, sıfırlama, hesap silme) ve sayfa yönlendirmeleri
+│   ├── db.py                # MySQL bağlantısı ve tablo oluşturma
+│   ├── mailer.py            # Doğrulama ve sıfırlama postaları (SMTP veya dosya)
 │   └── requirements.txt
 ├── frontend/
-│   ├── index.html           # Tek sayfa uygulama
+│   ├── index.html           # Ana uygulama (oda)
+│   ├── giris.html, kayit.html, dogrula.html, sifre_unuttum.html, sifre_sifirla.html, hesabim.html
 │   └── static/
 │       ├── css/style.css
 │       ├── js/app.js        # WebRTC + arayüz mantığı
-│       └── agent/           # Kullanıcıya indirilen ajan kopyası (agent/ ile aynı tutulur)
-├── agent/                   # Uzak kontrol ajanı kaynağı
-│   ├── agent.py
-│   ├── linux_agent.sh
-│   └── windows_agent.bat
+│       ├── js/auth.js       # Giriş ve kayıt formları
+│       ├── js/hesabim.js    # Hesabım sayfası
+│       └── agent/           # Kullanıcıya indirilen ajan kopyası (agent/ ile aynı olmalı; bkz. architect.md)
+├── agent/                   # Uzak kontrol ajanı kaynağı (agent.py, linux_agent.sh, windows_agent.bat, run_agent.*)
+├── tts-service/             # Konuşma çevirisi / TTS servisi kaynağı (model dosyaları repoda değil)
+├── docker/                  # Canlı Docker kurulumunun yerel karşılığı (Dockerfile, docker-compose.yml)
+├── tests/                   # pytest (üyelik testleri; gerçek MySQL gerekir)
 ├── scripts/                 # start.sh / start.bat
-├── uploads/                 # Yüklenen dosyalar (geçici)
+├── uploads/                 # Yüklenen dosyalar (çalışma zamanında oluşur; repoda izlenmez)
 └── .env.example
 ```
 
-> `backend/tts/` ve `backend/app.js` eski sürümlerden kalmadır, canlıda kullanılmaz. `docker/` (Dockerfile + compose) canlı uygulama servisinin yerel karşılığıdır; canlı Dockerfile'lar, gerçek compose dosyası ve ortam dosyaları sunucuda `/opt/nexmeet` altındadır. TTS servisinin kaynağı `tts-service/` altındadır.
+> Canlı Dockerfile'ların ve ortam dosyalarının gerçek hâli sunucuda `/opt/nexmeet` altındadır; repodaki `docker/` onların yerel karşılığıdır. TTS servisinin kaynağı `tts-service/` altındadır. Eski `backend/tts/` ve `backend/app.js` kaldırıldı.
 
 ---
 
@@ -206,12 +214,13 @@ docker logs --tail 100 nexmeet-tts     # TTS servisi logu
 - **WebSocket kurulamıyor:** nginx'te WebSocket yükseltme başlıkları ve `proxy_read_timeout` kontrol edin.
 - **Ajan bağlanamıyor (403):** oturum onaylanmamış, anahtar yanlış ya da anahtar zaten kullanılmış olabilir; yeni bir kontrol isteği başlatın.
 - **Dosya 413 hatası:** nginx `client_max_body_size` uygulama sınırından (50 MB) küçük olmasın.
+- **Giriş/kayıt 503:** veritabanına bağlanılamıyor. `DB_*` ayarlarını ve `curl -s http://127.0.0.1:8009/api/saglik` yanıtını kontrol edin (`db` alanı `tamam` olmalı).
 
 ---
 
 ## 🗂️ İlgili
 
-TTS servisi ayrı bir projedir (`nexmeet-tts`): faster-whisper tiny + yerel çeviri + Kokoro ONNX, yalnızca CPU. Kaynak kodu `tts-service/` altındadır (model dosyaları repoda değildir).
+TTS servisi ayrı bir projedir (`nexmeet-tts`): faster-whisper tiny + Argos (TR→EN, yerel) + Kokoro ONNX, yalnızca CPU. Kaynak kodu `tts-service/` altındadır (model dosyaları repoda değildir).
 
 ## 🏷️ Lisans
 

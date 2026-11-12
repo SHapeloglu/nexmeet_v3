@@ -93,3 +93,43 @@
 - Yerel git deposunda kesinti sırasında 3 sıfır baytlık nesne dosyası ve bozuk bir uzak-izleme referansı oluştu. Dosyalarda veri yoktu; silinip uzaktan yeniden çekildi, `git fsck` temiz. Uzaktaki depo etkilenmedi.
 - Sunucu denetimi temiz: artık dizin/test konteyneri yok, iki yedek `gzip -t` ile sağlam, TTS anahtarı iki env'de eşleşiyor, env izinleri 600, nginx geçerli, sertifika 2027-01-04'e kadar geçerli.
 
+
+
+## 2026-11-09 — Git geçmişi temizliği
+
+**Yapılanlar:**
+- Kullanıcı onayıyla geçmiş yeniden yazıldı: `uploads/` (özgeçmiş PDF ve JPG), eski TURN parolası ve iki eski public IP tüm dallardan kaldırıldı.
+- Yedek: ayna klon `~/nexmeet-backup-20261109-2321-mirror.git` (eski geçmişi içerir; yalnızca yerelde).
+- 11 dal zorla yüklendi. Commit sayısı 47 korundu. PR ref'leri (`refs/pull/*`) GitHub tarafından yönetildiği için yüklenmedi.
+- Yerel `main` ve uzak `origin/main` aynı SHA'da.
+
+**Açık / bilinen:**
+- Yerel çalışma ortamının `refs/t3/orchestration-v2/*` kontrol noktaları eski geçmişe işaret ediyor. Uzağa hiç gönderilmedi; araç kendi yönettiği için silinmedi.
+- Commit yazarı e-postaları metadata olarak kalır (kişisel veri içeriği temizlendi, yazar bilgisi değil).
+- GitHub'ın önbelleğindeki eski görünümler için destek talebi gerekebilir.
+
+## 2026-11-11 — Doküman senkronu ve geçmiş kontrolü
+
+**Yapılanlar:**
+- `architect.md`, `README.md`, `CLAUDE.md`, `backlog.md`, `task.md` kodla karşılaştırılıp güncellendi. Eksikler: üyelik katmanı (auth/db/mailer) belgede yoktu; çeviri hâlâ "GoogleTranslator" yazıyordu (Argos'a geçildi); TURN "STUN/TURN" yazıyordu (yalnız STUN); `CLAUDE.md`'deki `uploads/` ve `backend/tts/` notları eskiydi; frontend satır sayısı (~1.650 → ~2.050) ve proje yapısı güncel değildi.
+- `backlog.md`'ye iki fikir eklendi: hesabım için parola değiştirme, CI'da test çalıştırma.
+- `CLAUDE.md`'ye test komutu ve üyelik/posta ortam değişkenleri eklendi.
+- Önceki bağımsız geçmiş doğrulaması (ajan `ae2eb94c58f1f9f0c`) tamamlanmadan durdu. Yerine yerel kontroller yapıldı (aşağıda).
+
+**Bulgular:**
+- Ajan kopyaları ayrışmış: `frontend/static/agent/agent.py` (indirilen) kaynak `agent/agent.py`'den yeni (`--key-file`, `NEXMEET_AGENT_KEY`, anahtar maskeleme). 2026-10-18'deki "eşitlendi" notu artık geçerli değil.
+- Geçmişte eski TURN alan adı `nexmeet.powerbi.com.tr` (`TURN_URLS` satırı) duruyor. Parola ve IP'ler temizlendi; alan adı temizlenmedi.
+- Kökteki `start.bat` kişisel Windows yolu içeriyor ve `scripts/start.bat` ile ayrışmış.
+- Yerel kontroller: `uploads/` dal, uzak ve etiketlerde hiç commit içermiyor; çalışma ağacında yok. Yerel `refs/t3/*` hariç tutulduğunda geçmişte `turn:` ya da `3478` içeren 15 satırın tamamı yukarıdaki TURN alan adı ile ilgili eski/kaldırılmış satırlar.
+
+**Kararlar / neden:**
+- Belgeler kodla eşleşecek şekilde yazıldı; kod değiştirilmedi.
+- Değişiklikler `docs/gecmis-temizligi` dalına commit edilip push edildi; PR #12 kullanıcı isteğiyle `main`'e merge edildi (merge commit).
+- Geçmişteki TURN alan adı ve kökteki `start.bat` için karar kullanıcıya bırakıldı; ikisi de geri alınamayan ya da repo değiştiren işlemler.
+
+**Açık sorunlar:**
+- Ajan kaynağı ve indirilen kopya eşitlenmedi.
+- Geçmişteki TURN alan adı için yeniden yazma kararı bekliyor.
+- Gerçek mail akışı ve tarayıcı testi yapılmadı.
+
+**Sıradaki adım:** Kullanıcı kararları (TURN alan adı, kökteki `start.bat`); ajan kopyasının eşitlenmesi.

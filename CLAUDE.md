@@ -1,6 +1,6 @@
 # CLAUDE.md — NexMeet (v3, canlı)
 
-WebRTC tabanlı video konferans: oda + katılımcı başına 1 saatlik join token, WebSocket sinyalizasyon (offer/answer/ICE), sohbet (son 50 mesaj), dosya paylaşımı (50 MB, MIME doğrulama, 1 saat sonra otomatik silme), tarayıcıda kayıt (WebM), ekran paylaşımı, **uzak masaüstü kontrolü** (indirilebilir Python ajan) ve **anlık konuşma çevirisi** (TR → EN, ayrı TTS servisi üzerinden).
+WebRTC tabanlı video konferans: e-posta doğrulamalı üyelik (toplantıya yalnız üyeler katılır), oda + katılımcı başına 1 saatlik join token, WebSocket sinyalizasyon (offer/answer/ICE), sohbet (son 50 mesaj), dosya paylaşımı (50 MB, MIME doğrulama, 1 saat sonra otomatik silme), tarayıcıda kayıt (WebM), ekran paylaşımı, **uzak masaüstü kontrolü** (indirilebilir Python ajan) ve **anlık konuşma çevirisi** (TR → EN, ayrı TTS servisi üzerinden).
 
 - GitHub: https://github.com/SHapeloglu/nexmeet_v3 — **PUBLIC repo**
 - **Canlı:** Docker Compose, sunucuda `/opt/nexmeet` (repo dışı). Konteynerler: `nexmeet` (uvicorn, `127.0.0.1:8009`, ortam `nexmeet.env`, yüklemeler `./uploads` volume) ve `nexmeet-tts` (ortam `tts.env`). İkisi de `restart unless-stopped`; ağlar: `nexmeet` ve dış `ortak-db`. Public adres nginx arkasında: `nexmeet.powerbiegitimi.com`. Sunucuda otomatik uyku (AutoSleep) mekanizması var.
@@ -21,17 +21,23 @@ docker restart nexmeet                   # yeniden başlat (kod değişikliği i
 python3 -m venv venv && . venv/bin/activate
 pip install -r backend/requirements.txt
 cd backend && uvicorn main:app --reload --port 8000     # main.py __main__ da bunu yapar
+
+# Testler (gerçek MySQL gerekir; tek kullanımlık konteyner, ortak sunucu (mysql-ortak) DEĞİL)
+docker run -d --rm --name nexmeet-test-mysql -e MYSQL_ROOT_PASSWORD=<rastgele> \
+  -e MYSQL_DATABASE=nexmeet -p 127.0.0.1:33999:3306 mysql:8.0
+TEST_DB_PASSWORD=<rastgele> .venv-test/bin/pytest tests -q     # TEST_DB_PORT varsayılanı 33999
+docker stop nexmeet-test-mysql
 ```
 
-Ortam değişkenleri: `SECRET_KEY, ALLOWED_ORIGINS, MAX_FILE_SIZE_MB, UPLOADS_DIR, HOST, PORT, TTS_SERVICE_URL, TTS_API_KEY` ve üyelik/posta ayarları (bkz. `.env.example`). Canlıda değerler `/opt/nexmeet` altındaki `nexmeet.env` ve `tts.env` dosyalarından gelir; bu dosyaların içeriği repoya ve belgelere yazılmaz.
+Ortam değişkenleri: `SECRET_KEY, ALLOWED_ORIGINS, MAX_FILE_SIZE_MB, UPLOADS_DIR, HOST, PORT, TTS_SERVICE_URL, TTS_API_KEY`, veritabanı (`DB_*`), posta (`MAIL_BACKEND`, `SMTP_*`, `PUBLIC_BASE_URL`, `MAIL_DIR`) ve `FORWARDED_ALLOW_IPS` (bkz. `.env.example`). Canlıda değerler `/opt/nexmeet` altındaki `nexmeet.env` ve `tts.env` dosyalarından gelir; bu dosyaların içeriği repoya ve belgelere yazılmaz.
 
 ## Kurallar ve Tuzaklar
 
 - **Dağıtım:** Canlı yol Docker'dır. `README.md` ve `architect.md` bunu anlatır; repodaki `docker/` klasörü canlı kurulumun yerel karşılığıdır (TTS hariç; TTS kaynağı `tts-service/` altında).
 - Ses klonlama yok: TTS CPU'da Kokoro ONNX ile sabit `af_heart` sesiyle çalışır.
-- `backend/tts/` (torch + whisper, `/home/ubuntu/...` yolları) **kullanılmıyor** — `main.py` import etmiyor; EC2 tasarımından kalıntı. `backend/app.js` frontend `app.js`'in eski kopyası.
-- Ajan iki yerde: `agent/` (kaynak) ve `frontend/static/agent/` (kullanıcıya indirilen kopya) — ikisi farklı; ajan değişince indirilen kopyayı güncelle.
+- `backend/tts/` ve `backend/app.js` kaldırıldı (EC2 tasarımından kalıntılardı). Yeniden eklenmemeli.
+- Ajan iki yerde: `agent/` (kaynak) ve `frontend/static/agent/` (kullanıcıya indirilen kopya). Ajan değişince iki yer birlikte güncellenmeli; eşitlik her değişiklikte kontrol edilmeli.
 - Join token'lar ve kontrol oturumları bellekte tutulur; her yeniden başlatma (ör. `docker restart`) hepsini geçersiz kılar. `SECRET_KEY` okunur ama hiçbir yerde kullanılmaz (token'lar `secrets.token_urlsafe` ile rastgele üretilir, imzalanmaz); tanımsızsa değeri yine de her başlatmada rastgele üretilir ve etkisizdir.
-- **Public repo:** `uploads/` `.gitignore`'da ama içindeki 2 kullanıcı dosyası (PDF, JPG) izleniyor; `.env` asla commit edilmez, IP/anahtar yazma.
-- Frontend tek dosya (`frontend/static/js/app.js`, ~1.650 satır); state nesnesi en üstte.
+- **Public repo:** `uploads/` izlenmez (`.gitignore`); kullanıcı dosyaları git geçmişinden de temizlendi (2026-11-09). `.env` asla commit edilmez, IP/anahtar/parola yazma. Gerçek değerler yalnız sunucudaki env dosyalarında.
+- Frontend: `frontend/static/js/app.js` (~2.050 satır) ana uygulama; state nesnesi en üstte. Üyelik sayfaları `auth.js` ve `hesabim.js` içinde.
 - Oturum sonunda `session.md`'ye kayıt düş, `task.md`'yi güncelle.

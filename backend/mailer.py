@@ -14,6 +14,7 @@ import uuid
 from datetime import datetime, timezone
 from email.message import EmailMessage
 from pathlib import Path
+from typing import Callable, Optional
 
 logger = logging.getLogger("nexmeet.mail")
 
@@ -136,11 +137,16 @@ def gonder(posta: dict) -> None:
         raise RuntimeError(f"Bilinmeyen MAIL_BACKEND: {backend}")
 
 
-def gonder_guvenli(posta: dict) -> bool:
-    """Gönderir; hatayı yalnız türüyle birlikte loglar ve False döner."""
+def gonder_guvenli(posta: dict, basarili: Optional[Callable[[], None]] = None) -> bool:
+    """Gönderir; hatayı yalnız türüyle birlikte loglar ve False döner. Gönderim başarılıysa `basarili` geri çağrısını çağırır (ör. mail kotası kaydı); bu çağrının hatası gönderim sonucunu değiştirmez, yalnız loglanır."""
     try:
         gonder(posta)
-        return True
     except Exception as e:  # noqa: BLE001 - arka plan işi, uygulamayı düşürmemeli
         logger.error("Mail gönderilemedi (%s): %s", type(e).__name__, e)
         return False
+    if basarili is not None:
+        try:
+            basarili()
+        except Exception as e:  # noqa: BLE001 - mail gitti; yalnız kayıt hatası loglanır
+            logger.error("Mail gönderildi ama gönderim sonrası kayıt yazılamadı (%s): %s", type(e).__name__, e)
+    return True

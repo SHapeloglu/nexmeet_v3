@@ -8,6 +8,7 @@ Tasarım notları:
 - Kayıt ve parola sıfırlama uçları, kayıtlı olup olmadığını yanıttan belli etmez.
 """
 import asyncio
+import functools
 import hashlib
 import hmac
 import logging
@@ -249,8 +250,14 @@ def _mail_kaydet(cur, eposta: str, tur: str) -> None:
     )
 
 
-def _token_tuket(cur, token: str, tur: str) -> tuple[Optional[int], Optional[str]]:
-    """Token'ı tek kullanımlık olarak tüketir. (kullanıcı_id, hata_kodu) döner."""
+def _mail_kaydet_islem(eposta: str, tur: str) -> None:
+    """mail_log kaydını kendi veritabanı bağlantısıyla yazar. Yalnız mail gerçekten gönderildikten sonra çağrılır."""
+    with db.islem() as cur:
+        _mail_kaydet(cur, eposta, tur)
+
+
+def _token_salt_okuma(cur, token: str, tur: str) -> tuple[Optional[dict], Optional[str]]:
+    """Token'ı yalnız okuyarak doğrular; hiçbir şeyi tüketmez. (satır, hata_kodu) döner. Hata kodu: gecersiz ya da suresi_dolmus."""
     if not isinstance(token, str) or not (20 <= len(token) <= 100):
         return None, "gecersiz"
     token_hash = _hash(token)
@@ -263,9 +270,17 @@ def _token_tuket(cur, token: str, tur: str) -> tuple[Optional[int], Optional[str
     if (not row or row["kind"] != tur or row["used_at"] is not None
             or not hmac.compare_digest(row["token_hash"], token_hash)):
         return None, "gecersiz"
-    simdi = db.simdi()
-    if row["expires_at"] <= simdi:
+    if row["expires_at"] <= db.simdi():
         return None, "suresi_dolmus"
+    return row, None
+
+
+def _token_tuket(cur, token: str, tur: str) -> tuple[Optional[int], Optional[str]]:
+    """Token'ı tek kullanımlık olarak tüketir. (kullanıcı_id, hata_kodu) döner."""
+    row, hata = _token_salt_okuma(cur, token, tur)
+    if hata:
+        return None, hata
+    simdi = db.simdi()
     # Yarış koşulunda iki istekten yalnız biri kazansın
     cur.execute(
         "UPDATE email_tokens SET used_at = %s WHERE id = %s AND used_at IS NULL",
@@ -289,9 +304,9 @@ def _basarisiz_giris(cur, row: dict, simdi) -> None:
 
 
 def _postalari_gonder(postalar: list) -> None:
-    """Hazırlanan e-postaları tek tek gönderir. Arka plan görevi olarak çalışır, böylece HTTP yanıtı mail gönderimini beklemez."""
-    for posta in postalar:
-        mailer.gonder_guvenli(posta)
+    """Hazırlanan (tür, posta) çiftlerini tek tek gönderir. Kota kaydı (mail_log) yalnız gönderim başarılı olduktan sonra yazılır; SMTP hatasında kota tüketilmez. Arka plan görevi olarak çalışır, böylece HTTP yanıtı mail gönderimini beklemez."""
+    for tur, posta in postalar:
+        mailer.gonder_guvenli(posta, basarili=functools.partial(_mail_kaydet_islem, posta["alici"], tur))
 
 
 # ─── Sayfalar ────────────────────────────────────────────────────────────────
@@ -344,7 +359,7 @@ class KayitIstek(BaseModel):
 
 
 def _kayit_islem(ad: str, eposta: str, parola_hash: str, base: str) -> list:
-    """Yeni kullanıcıyı ve doğrulama token'ını veritabanına yazar, doğrulama mailini hazırlar. Kayıtlı e-postalarda hiçbir şey yapmadan boş liste döner; böylece dışarıdan hesap varlığı anlaşılmaz."""
+    """Yeni kullanıcıyı ve doğrulama token'ını veritabanına yazar, doğrulama mailini (tür, posta) çifti olarak hazırlar. Kayıtlı e-postalarda hiçbir şey yapmadan boş liste döner; böylece dışarıdan hesap varlığı anlaşılmaz. Kota kaydı burada yazılmaz; gönderim sonrası yapılır."""
     with db.islem() as cur:
         cur.execute("SELECT id FROM users WHERE email = %s", (eposta,))
         if cur.fetchone():
@@ -369,8 +384,7 @@ def _kayit_islem(ad: str, eposta: str, parola_hash: str, base: str) -> list:
         )
         if not _mail_kotasi_var(cur, eposta):
             return []
-        _mail_kaydet(cur, eposta, "dogrulama")
-        return [mailer.dogrulama_postasi(eposta, ad, f"{base}/auth/dogrula?token={token}")]
+        return [("dogrulama", mailer.dogrulama_postasi(eposta, ad, f"{base}/auth/dogrula?token={token}"))]
 
 
 @router.post("/api/auth/kayit")
@@ -395,7 +409,7 @@ class EpostaIstek(BaseModel):
 
 
 def _dogrulama_tekrar_islem(eposta: str, base: str) -> list:
-    """Doğrulanmamış bir hesap için eski doğrulama token'larını siler ve yeni bir token üretip mail hazırlar. Kota, hesap yoksa ya da zaten doğrulanmışsa boş liste döner."""
+    """Doğrulanmamış bir hesap için eski doğrulama token'larını siler ve yeni bir token üretip (tür, posta) çifti hazırlar. Kota, hesap yoksa ya da zaten doğrulanmışsa boş liste döner. Kota kaydı gönderim sonrası yazılır."""
     with db.islem() as cur:
         cur.execute("SELECT id, display_name, email_verified FROM users WHERE email = %s", (eposta,))
         row = cur.fetchone()
@@ -413,8 +427,7 @@ def _dogrulama_tekrar_islem(eposta: str, base: str) -> list:
             "VALUES (%s, 'dogrulama', %s, %s)",
             (row["id"], token_hash, db.simdi() + timedelta(hours=DOGRULAMA_SAAT)),
         )
-        _mail_kaydet(cur, eposta, "dogrulama")
-        return [mailer.dogrulama_postasi(eposta, row["display_name"], f"{base}/auth/dogrula?token={token}")]
+        return [("dogrulama", mailer.dogrulama_postasi(eposta, row["display_name"], f"{base}/auth/dogrula?token={token}"))]
 
 
 @router.post("/api/auth/dogrulama-tekrar")
@@ -448,6 +461,7 @@ class TokenIstek(BaseModel):
 
 
 @router.post("/api/auth/dogrula")
+@limiter.limit("20/minute")
 async def dogrula(request: Request, istek: TokenIstek):
     """E-posta doğrulama ucu. Token geçersiz ya da süresi dolmuşsa 400 hatası verir; geçerliyse hesabı doğrulanmış yapar."""
     origin_kontrol(request)
@@ -566,7 +580,7 @@ async def cikis(request: Request):
 # ─── Parola sıfırlama ────────────────────────────────────────────────────────
 
 def _sifirlama_istek_islem(eposta: str, base: str) -> list:
-    """Parola sıfırlama için eski sıfırlama token'larını siler, yenisini üretir ve mail hazırlar. Hesap yoksa ya da kota doluysa boş liste döner."""
+    """Parola sıfırlama için eski sıfırlama token'larını siler, yenisini üretir ve (tür, posta) çifti hazırlar. Hesap yoksa ya da kota doluysa boş liste döner. Kota kaydı gönderim sonrası yazılır."""
     with db.islem() as cur:
         cur.execute("SELECT id, display_name FROM users WHERE email = %s", (eposta,))
         row = cur.fetchone()
@@ -584,8 +598,7 @@ def _sifirlama_istek_islem(eposta: str, base: str) -> list:
             "VALUES (%s, 'sifirlama', %s, %s)",
             (row["id"], token_hash, db.simdi() + timedelta(hours=SIFIRLAMA_SAAT)),
         )
-        _mail_kaydet(cur, eposta, "sifirlama")
-        return [mailer.sifirlama_postasi(eposta, row["display_name"], f"{base}/sifre-sifirla?token={token}")]
+        return [("sifirlama", mailer.sifirlama_postasi(eposta, row["display_name"], f"{base}/sifre-sifirla?token={token}"))]
 
 
 @router.post("/api/auth/sifre-unuttum")
@@ -609,6 +622,13 @@ class SifreSifirlaIstek(BaseModel):
     parola: str = ""
 
 
+def _sifirlama_on_kontrol(token: str) -> Optional[str]:
+    """Sıfırlama token'ını yalnız okuyarak doğrular (tüketmez). Geçersiz ya da süresi dolmuşsa hata kodunu döner. Parola hash'i yalnız bu kontrol geçerse hesaplanır."""
+    with db.islem() as cur:
+        _, hata = _token_salt_okuma(cur, token, "sifirlama")
+        return hata
+
+
 def _sifirla_islem(token: str, parola_hash: str) -> Optional[str]:
     """Sıfırlama token'ını tüketir, yeni parola hash'ini yazar ve kullanıcının tüm oturumlarını siler. Hata varsa hata kodunu, başarılıysa None döner."""
     with db.islem() as cur:
@@ -627,10 +647,15 @@ def _sifirla_islem(token: str, parola_hash: str) -> Optional[str]:
 
 
 @router.post("/api/auth/sifre-sifirla")
+@limiter.limit("10/hour")
 async def sifre_sifirla(request: Request, istek: SifreSifirlaIstek):
     """Parola sıfırlama ucu. Token geçersiz ya da süresi dolmuşsa 400 hatası verir; başarılıysa parola değişir ve tüm oturumlar düşer."""
     origin_kontrol(request)
     parola_dogrula(istek.parola)
+    # Önce token salt okunur doğrulanır; yalnız geçerli token için argon2 hash'i hesaplanır
+    hata = await asyncio.to_thread(_sifirlama_on_kontrol, istek.token)
+    if hata:
+        raise HTTPException(status_code=400, detail=TOKEN_HATA[hata])
     parola_hash = await asyncio.to_thread(PH.hash, istek.parola)
     hata = await asyncio.to_thread(_sifirla_islem, istek.token, parola_hash)
     if hata:

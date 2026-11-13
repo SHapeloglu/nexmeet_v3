@@ -1165,8 +1165,8 @@ function initFileDropZone() {
  */
 async function handleFiles(files) {
   for (const file of files) {
-    if (file.size > 100 * 1024 * 1024) {
-      showToast(`"${file.name}" çok büyük (max 100 MB)`);
+    if (file.size > 50 * 1024 * 1024) {
+      showToast(`"${file.name}" çok büyük (max 50 MB)`);
       continue;
     }
     await uploadFile(file);

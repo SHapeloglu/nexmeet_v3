@@ -43,24 +43,6 @@ ALLOWED_ORIGINS = [o.strip() for o in RAW_ORIGINS.split(",") if o.strip()]
 # Dosya boyut sınırı (bayt). MB cinsinden MAX_FILE_SIZE_MB ortam değişkeninden okunur; ayar yoksa 50 MB kullanılır.
 MAX_FILE_SIZE = int(os.getenv("MAX_FILE_SIZE_MB", "50")) * 1024 * 1024
 
-# İzin verilen MIME tipleri (executable türler yasaklı)
-ALLOWED_MIME_TYPES = {
-    # Dokümanlar
-    "application/pdf", "application/msword",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "application/vnd.ms-excel",
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    "application/vnd.ms-powerpoint",
-    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-    "text/plain", "text/csv",
-    # Görseller
-    "image/jpeg", "image/png", "image/gif", "image/webp", "image/svg+xml",
-    # Ses / Video
-    "audio/mpeg", "audio/ogg", "audio/wav", "video/mp4", "video/webm",
-    # Sıkıştırma
-    "application/zip", "application/x-zip-compressed",
-}
-
 BLOCKED_EXTENSIONS = {
     ".exe", ".bat", ".cmd", ".sh", ".ps1", ".msi",
     ".dll", ".so", ".dylib", ".bin", ".com", ".scr",
@@ -208,7 +190,8 @@ def cleanup_expired_tokens():
 
 def validate_file(filename: str, content_type: str, content: bytes) -> str:
     """
-    Dosya türünü ve uzantısını doğrula.
+    Dosya adının uzantısını doğrular; yalnız BLOCKED_EXTENSIONS içindeki uzantılar reddedilir.
+    MIME tipi (content_type) ve içerik (content) DENETLENMEZ: bu parametreler imza uyumluluğu için duruyor ama kullanılmıyor.
     Sorun varsa HTTPException fırlatır.
     Temizlenmiş dosya adını döndürür.
     """
@@ -221,7 +204,7 @@ def validate_file(filename: str, content_type: str, content: bytes) -> str:
             detail=f"'{ext}' uzantılı dosyalar güvenlik nedeniyle yüklenemez."
         )
 
-    # MIME type kontrolü kaldırıldı - sadece tehlikeli uzantılar engellendi
+    # Yalnız uzantı denetlenir; MIME tipi bilinçli olarak kontrol edilmez.
 
     return safe_name
 
@@ -361,14 +344,14 @@ async def upload_file(
     room_id: str,
     file: UploadFile = File(...),
     peer_id: str = Form(...),
-    uploader_name: str = Form(...),
     token: str = Form(...),
 ):
-    """Dosya yükle — token doğrulaması zorunlu."""
+    """Dosya yükle — token doğrulaması zorunlu. Yükleyenin adı doğrulanmış join token'dan (entry["name"]) alınır; istemciden gelen ad yok sayılır."""
     # Token doğrula
     entry = validate_join_token(token)
     if not entry or entry["room_id"] != room_id or entry["peer_id"] != peer_id:
         raise HTTPException(status_code=401, detail="Geçersiz veya süresi dolmuş token.")
+    uploader_name = entry["name"]
 
     content = await file.read()
 
@@ -528,6 +511,21 @@ async def agent_endpoint(websocket: WebSocket, agent_id: str):
         agent_connections.pop(agent_id, None)
 
 
+async def _peer_kontrol_oturumlarini_iptal_et(peer_id: str) -> None:
+    """Peer ayrıldığında, o peer'ın kontrolcü ya da hedef olduğu tüm kontrol oturumlarını iptal eder: onayı kaldırır, ajana stop-control gönderir (hata yutulur) ve oturumu siler."""
+    for sid, sess in list(control_sessions.items()):
+        if peer_id not in (sess.get("controller_peer_id"), sess.get("target_peer_id")):
+            continue
+        sess["approved"] = False
+        agent_ws = sess.get("agent_ws")
+        if agent_ws:
+            try:
+                await agent_ws.send_json({"type": "stop-control", "session_id": sid})
+            except Exception:
+                pass
+        control_sessions.pop(sid, None)
+
+
 # Not: /ws/agent/{id}, /ws/{room_id}/{peer_id} rotasından ÖNCE tanımlı olmalı; yoksa onun tarafından yutulur.
 @app.websocket("/ws/{room_id}/{peer_id}")
 async def websocket_endpoint(websocket: WebSocket, room_id: str, peer_id: str):
@@ -671,6 +669,7 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, peer_id: str):
 
     except WebSocketDisconnect:
         manager.disconnect(room_id, peer_id)
+        await _peer_kontrol_oturumlarini_iptal_et(peer_id)
         await manager.broadcast_to_room(room_id, {
             "type":    "peer-left",
             "peer_id": peer_id,
@@ -679,6 +678,7 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, peer_id: str):
     except Exception as e:
         logger.error(f"WebSocket error for peer {peer_id}: {e}")
         manager.disconnect(room_id, peer_id)
+        await _peer_kontrol_oturumlarini_iptal_et(peer_id)
         await manager.broadcast_to_room(room_id, {
             "type":    "peer-left",
             "peer_id": peer_id,
@@ -840,12 +840,13 @@ async def stop_control(data: dict):
         raise HTTPException(status_code=401, detail="Geçersiz token.")
 
     session_id = data.get("session_id")
-    session    = control_sessions.pop(session_id, None)
+    session    = control_sessions.get(session_id)
 
     if session:
-        # Sadece kontrolcü veya hedef durdurabilir
+        # Sadece kontrolcü veya hedef durdurabilir. Yetki yoksa oturum silinmez.
         if entry["peer_id"] not in (session["controller_peer_id"], session["target_peer_id"]):
             raise HTTPException(status_code=403, detail="Bu işlem için yetkiniz yok.")
+        control_sessions.pop(session_id, None)
         for ws_key in ["controller_ws", "agent_ws"]:
             ws = session.get(ws_key)
             if ws:

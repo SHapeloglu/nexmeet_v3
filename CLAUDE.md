@@ -1,6 +1,6 @@
 # CLAUDE.md — NexMeet (v3, canlı)
 
-WebRTC tabanlı video konferans: e-posta doğrulamalı üyelik (toplantıya yalnız üyeler katılır), oda + katılımcı başına 1 saatlik join token, WebSocket sinyalizasyon (offer/answer/ICE), sohbet (son 50 mesaj), dosya paylaşımı (50 MB, MIME doğrulama, 1 saat sonra otomatik silme), tarayıcıda kayıt (WebM), ekran paylaşımı, **uzak masaüstü kontrolü** (indirilebilir Python ajan) ve **anlık konuşma çevirisi** (TR → EN, ayrı TTS servisi üzerinden).
+WebRTC tabanlı video konferans: e-posta doğrulamalı üyelik (toplantıya yalnız üyeler katılır), oda + katılımcı başına 1 saatlik join token, WebSocket sinyalizasyon (offer/answer/ICE), sohbet (son 50 mesaj), dosya paylaşımı (50 MB, uzantı doğrulama, 1 saat sonra otomatik silme), tarayıcıda kayıt (WebM), ekran paylaşımı, **uzak masaüstü kontrolü** (indirilebilir Python ajan) ve **anlık konuşma çevirisi** (TR → EN, ayrı TTS servisi üzerinden).
 
 - GitHub: https://github.com/SHapeloglu/nexmeet_v3 — **PUBLIC repo**
 - **Canlı:** Docker Compose, sunucuda `/opt/nexmeet` (repo dışı). Konteynerler: `nexmeet` (uvicorn, `127.0.0.1:8009`, ortam `nexmeet.env`, yüklemeler `./uploads` volume) ve `nexmeet-tts` (ortam `tts.env`). İkisi de `restart unless-stopped`; ağlar: `nexmeet` ve dış `ortak-db`. Public adres nginx arkasında: `nexmeet.powerbiegitimi.com`. Sunucuda otomatik uyku (AutoSleep) mekanizması var.

@@ -1,7 +1,8 @@
 """NexMeet TTS servisi (FastAPI).
 
 Akış: gelen ses -> faster-whisper ile metin (STT) -> Argos ile tr->en çeviri -> Kokoro ile İngilizce ses (TTS).
-Çağıran: backend/main.py içindeki /api/tts/* proxy'si (nexmeet konteyneri). Servis 127.0.0.1:5000'de dinler.
+Çağıran: backend/main.py içindeki /api/tts/* proxy'si (nexmeet konteyneri; httpx ile sunucu tarafından çağrılır, tarayıcı doğrudan çağırmaz).
+Servis Docker konteynerinde 0.0.0.0:5000'de dinler (tts-service/Dockerfile.tts); dışarıya port yayınlanıp yayınlanmadığı dağıtıma bağlıdır ve yerel ağ dışına yayınlanmamalıdır. Tüm uç noktalar x-api-key başlığı ister.
 Gerekenler: API_KEY ortam değişkeni; kokoro-v1.0.onnx, voices-v1.0.bin ve models/translate-tr_en-1_5/ dosyaları.
 Modeller import sırasında yüklenir, bu yüzden servis açılışı birkaç saniye sürer.
 """
@@ -12,7 +13,6 @@ import base64
 import tempfile
 import logging
 from fastapi import FastAPI, Header, HTTPException, Path
-from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from faster_whisper import WhisperModel
 import ctranslate2
@@ -29,14 +29,7 @@ API_KEY = os.environ["API_KEY"]  # ortam değişkeni zorunlu, sabit değer yok
 # FastAPI uygulaması. Aşağıdaki endpoint'ler bu nesneye bağlanır; uvicorn 'main:app' ile bu nesneyi çalıştırır.
 app = FastAPI()
 
-# CORS ayarı: tarayıcının başka adreslerden yaptığı isteklere izin verir.
-# Servis yalnız 127.0.0.1'de dinlediği için '*' kabul edilebilir; dışarı açılırsa bu ayar gözden geçirilmeli.
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# CORS middleware yok: tarayıcı bu servisi doğrudan çağırmaz; istemci yalnız backend proxy'sini (/api/tts/*) kullanır.
 
 logger.info("Whisper modeli yükleniyor...")
 # Whisper 'tiny' en küçük ve en hızlı modeldir; doğruluğu sınırlıdır (bu yüzden halüsinasyon filtresi var).

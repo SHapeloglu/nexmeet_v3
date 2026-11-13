@@ -14,7 +14,7 @@ WebRTC tabanlı video konferans: **anlık konuşma çevirisi (TR → EN)**, **uz
 | 🌐 Anlık Çeviri | Türkçe konuşma → İngilizce sentezlenmiş ses (sabit ses, ses klonlama yok) |
 | 🖥️ Ekran Paylaşımı | Tüm ekran veya sekme |
 | 🕹️ Uzak Masaüstü Kontrolü | Karşı tarafın onayıyla fare/klavye kontrolü (indirilebilir Python ajan) |
-| 📁 Dosya Paylaşımı | En fazla **50 MB**, uzantı + MIME doğrulaması, **1 saat sonra otomatik silinir** |
+| 📁 Dosya Paylaşımı | En fazla **50 MB**, uzantı doğrulaması, **1 saat sonra otomatik silinir** |
 | 💬 Sohbet | Oda geçmişli (son 50 mesaj) |
 | 🔴 Toplantı Kaydı | Tarayıcıda yerel kayıt, WebM indirme |
 | 🔒 Token Tabanlı Erişim | Katılımcı başına 1 saatlik join token; `peer_id` sunucuda üretilir |
@@ -196,7 +196,7 @@ Ajan gereksinimleri: `pyautogui`, `mss`, `websockets`, `pillow` (Linux'ta ayrıc
 
 - **Token:** `/api/join-token` ile alınır, 1 saat geçerlidir; korumalı uçların hepsi doğrular. Süresi dolan token'lar ve eski kontrol oturumları temizlenir.
 - **Kimlik:** `peer_id` sunucuda üretilir; başkası aynı kimlikle bağlanamaz. Odalarda sahip/şifre yoktur: oda kodunu bilen katılabilir.
-- **Dosyalar:** yasaklı uzantılar (`.exe .bat .cmd .sh .ps1 .msi .dll .so .dylib .bin .com .scr .vbs .js .jar .py .php .rb`), izinli MIME listesi, 1 saat sonra silme; servis açılırken 1 saatten eski dosyalar da silinir.
+- **Dosyalar:** yasaklı uzantılar (`.exe .bat .cmd .sh .ps1 .msi .dll .so .dylib .bin .com .scr .vbs .js .jar .py .php .rb`), 1 saat sonra silme; servis açılırken 1 saatten eski dosyalar da silinir.
 - **Hız sınırı:** `slowapi` ile uç noktalara göre (yukarıdaki tablo).
 - **CORS:** üretimde `ALLOWED_ORIGINS` ile kısıtlanır.
 

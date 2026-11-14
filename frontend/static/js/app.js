@@ -1542,7 +1542,7 @@ function onControlApproved(sessionId) {
 
   // Connect control WebSocket
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  const wsUrl = `${proto}://${location.host}/ws/control/${sessionId}/${state.peerId}`;
+  const wsUrl = `${proto}://${location.host}/ws/control/${sessionId}/${state.peerId}?token=${encodeURIComponent(state.joinToken)}`;
   remote.controlWs = new WebSocket(wsUrl);
 
   remote.controlWs.onopen = () => console.log('Control WS open');

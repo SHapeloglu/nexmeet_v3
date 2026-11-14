@@ -9,8 +9,8 @@
 - [x] 2026-11-09 ✅ ~~**Git geçmişinde kişisel veri ve eski TURN parolası**~~ — `uploads/` (özgeçmiş PDF/JPG), eski TURN parolası ve eski public IP'ler tüm dallardan çıkarıldı; `git filter-repo` ile yeniden yazıldı ve zorla yüklendi. Yedek: yerelde ayna klon (`~/nexmeet-backup-20261109-2321-mirror.git`).
 - [x] 2026-11-09 ✅ ~~**TURN fiilen yok**~~ — sabit kullanıcı/şifre `app.js`'ten kaldırıldı (PR #7); yalnız STUN kullanılıyor. Coturn kurulumu `backlog.md`'de.
 
-- [x] 2026-10-18 ✅ ~~**Uzak kontrol bozuk**~~ — kök neden: `/ws/{room_id}/{peer_id}` rotası `/ws/agent/{id}`'yi gölgeliyordu (ajan rotası öne alındı); ayrıca ajan artık oturuma özel tek kullanımlık `agent_key` ile bağlanıyor (hedef onayladıktan sonra, yalnız hedefe iletilir, arayüzde gösterilir); `.bat`/`.sh`/GUI `--key` alıyor, Uçtan uca denendi (geçici portta). Kod sonradan repoya alındı (PR #6). (#64)
-- [x] 2026-10-16 ✅ ~~**Çeviri bozuk**~~ — yerel Argos modeline geçildi (`/root/nexmeet-tts`). Eski not: `nexmeet-tts` GoogleTranslator → sunucu IP'si Google captcha'sında, `TooManyRequests`. Resmi API ya da yerel çeviri modeli. (#64)
+- [x] 2026-10-18 ✅ ~~**Uzak kontrol bozuk**~~ — kök neden: `/ws/{room_id}/{peer_id}` rotası `/ws/agent/{id}`'yi gölgeliyordu (ajan rotası öne alındı); ayrıca ajan artık oturuma özel tek kullanımlık `agent_key` ile bağlanıyor (hedef onayladıktan sonra, yalnız hedefe iletilir, arayüzde gösterilir); `.bat`/`.sh`/GUI `--key` alıyor, Uçtan uca denendi (geçici portta). Kod sonradan repoya alındı (PR #6). (#64) (harici not, repoda yok)
+- [x] 2026-10-16 ✅ ~~**Çeviri bozuk**~~ — yerel Argos modeline geçildi (`/root/nexmeet-tts`). Eski not: `nexmeet-tts` GoogleTranslator → sunucu IP'si Google captcha'sında, `TooManyRequests`. Resmi API ya da yerel çeviri modeli. (#64) (harici not, repoda yok)
 - [x] 2026-10-18 ✅ ~~TTS proxy hata yönetimi~~ — ortak `_tts_istek`: 502/503/504 + ön yüzde toast.
 - [x] 2026-10-18 ✅ ~~`/api/control/stop` 401~~ — `app.js` iki çağrıya `token` eklendi (stop 200 döndü).
 - [x] 2026-10-18 ✅ ~~peer_id taklidi~~ — `/api/join-token` peer_id'yi sunucuda üretir; `/api/room/{id}/info` yalnız sayı döner. (Oda sahibi/şifresi hâlâ yok: odayı bilen katılabilir.)
@@ -28,15 +28,24 @@
 
 Canlı dağıtım Docker Compose (`/opt/nexmeet`); repo ile sunucu arasındaki farklar burada takip edilir.
 
-- [x] (a) Sunucu kodu GitHub'a alındı (PR #6) ve güvenlik düzeltmeleriyle yeniden dağıtıldı (`nexmeet:2026-11-08`, eski imaj `nexmeet:rollback-2026-10-21`)
+- [x] (a) Sunucu kodu GitHub'a alındı (PR #6) ve güvenlik düzeltmeleriyle yeniden dağıtıldı (`nexmeet:2026-11-08` (sonra 2026-11-09 ile değiştirildi), eski imaj `nexmeet:rollback-2026-10-21`)
 - [x] (b) TTS servisi kaynağı repoya eklendi (PR #5, `tts-service/`)
 - [x] (c) Üyelik veritabanı bağlantısı doğrulandı (konteyner logu); SMTP açık, yukarıya bkz.
 - [x] (d) Eski systemd birimleri kaldırıldı: `nexmeet.service`, `nexmeet-tts.service`, `/root/nexmeet` (yedek sunucuda)
 
 ## 🚧 Devam Eden
 
+- [ ] **B1: IP'den bağımsız hesap kilidi** — KARAR: bu turda değiştirilmedi; kabul edilmiş risk. Gerekçe: kilidi IP'ye bağlamak yeni şema ve akış değişikliği gerektirir (backlog'da ayrıca). Kaynak: `backend/auth.py` `_basarisiz_giris` (satır 294), `_giris_islem` (satır 483, çağrı 496).
+- [ ] 🟠 **B4: mail kotası yarışı** — KABUL EDİLDİ, bilinen risk. Eşzamanlı istekler SMTP süresince kotayı en fazla 5+N-1 aşabilir. Kaynak: `backend/auth.py` `_mail_kotasi_var` (satır 236), `_mail_kaydet_islem` (satır 253), `_postalari_gonder` (satır 306-309, kayıt yalnız gönderim başarılı olunca).
+- [ ] **C10: testler — upload, kontrol yetkisi, peer ayrılması.** Henüz yazılmadı; yeni dosya `tests/test_kontrol_yukleme.py` üzerinde çalışılıyor.
+- [ ] **A2b: kontrolcüye bildirim eksik.** Peer ayrılınca karşı tarafa mesaj gitmiyor.
+- [ ] **F1: ön yüz kalıntıları.** `frontend/static/js/app.js:1163` JSDoc hâlâ "100 MB" diyor (sınır 50 MB); `app.js:1196` `uploader_name` alanı gönderiliyor ama backend bunu okumuyor (yükleyen adı token'dan alınıyor, `backend/main.py:354`).
+- [ ] 🟠 **Mail gerçek akış testi:** Sıradaki bölümündeki mevcut madde; değiştirilmedi, 🟠 öncelik korunuyor.
+- [ ] **Canlıya alma:** PR #13, #14, #15 main'de (merge commit). Canlı sunucu henüz bu sürümü çalıştırmıyor. Dağıtım ayrı bir karar.
 
 ## ✅ Tamamlanan
+
+- [x] 2026-11-13/14 — PR #13 (stop-control yetkisi, peer ayrılınca kontrol iptali, yükleyen adı token'dan, MIME belgesi), PR #14 (TTS CORS kaldırıldı, dosya sınırı 50 MB), PR #15 (doğrula ve sıfırla hız sınırı, kota yalnız başarılı gönderimde) main'e birleşti. Birleşik ağaçta geçici MySQL ile 47 test geçti (sunucuda, işlem sonrası silindi).
 
 - [x] 2026-11-11 — `architect.md`, `README.md`, `CLAUDE.md`, `backlog.md`, `task.md` ve `session.md` kodla karşılaştırılıp güncellendi (üyelik katmanı, Argos çeviri, yalnız STUN, ajan anahtarı, test komutu, `uploads/` durumu). PR #12 (`docs/gecmis-temizligi`) ile birleştirildi.
 

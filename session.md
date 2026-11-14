@@ -133,3 +133,27 @@
 - Gerçek mail akışı ve tarayıcı testi yapılmadı.
 
 **Sıradaki adım:** Kullanıcı kararları (TURN alan adı, kökteki `start.bat`); ajan kopyasının eşitlenmesi.
+
+## 2026-11-12 — 2026-11-14 — Doğrulama, düzeltme ve birleştirme
+
+**Yapılanlar:**
+- 37 iddia (backend, üyelik, TTS/ön yüz/ajan/dağıtım) bağımsız doğrulayıcıyla kanıt satırıyla incelendi: 34 doğru, 2 kısmi, 1 reddedildi.
+- 3 düzeltme dalı (W1, W2, W3) ayrı alt ajanlarla yapıldı; her biri doğrulayıcıdan geçti. W2 eski main'den (`89fd360`) çıktığı için güncel `origin/main`'e yeniden uygulandı.
+- Birleşik ağaçta geçici MySQL ile 47 test geçti. Test konteyneri ve geçici dizin silindi. Canlı konteynerlere dokunulmadı (Exited durumunda kaldı).
+- PR #13, #14, #15 açıldı, bağlandı ve merge commit ile birleştirildi.
+
+**Kararlar / neden:**
+- B1 (IP'den bağımsız hesap kilidi) bu turda değiştirilmedi; kabul edilmiş risk. Kilidi IP'ye bağlamak yeni şema ve akış değişikliği gerektirir (backlog'da ayrıca).
+- B4 (mail kotası yarışı) kabul edildi; bilinen risk olarak kayıtlı.
+- A6: MIME doğrulaması uygulanmadı, ölü kod kaldırıldı; belgeler "uzantı doğrulama" diyor.
+- Birleştirme kapısı kullanıcı tarafından lidere devredildi.
+
+**Açık sorunlar:**
+- B1, B4 (kayıtlı risk).
+- C10: upload, kontrol yetkisi, peer ayrılması testleri henüz yazılmadı.
+- A2b: peer ayrılınca kontrolcüye bildirim yok.
+- F1: `app.js:1163` JSDoc "100 MB" diyor; `app.js:1196` kullanılmayan `uploader_name` alanı.
+- Canlıya alma kararı: PR #13-15 main'de, canlı sunucu bu sürümü henüz çalıştırmıyor.
+- Mail gerçek akış testi.
+
+**Sıradaki adım:** D2 (belgelerin düzeltilmesi), sonra C10, A2b, F1 dalları; ardından canlıya alma kararı.

@@ -512,7 +512,7 @@ async def agent_endpoint(websocket: WebSocket, agent_id: str):
 
 
 async def _peer_kontrol_oturumlarini_iptal_et(peer_id: str) -> None:
-    """Peer ayrıldığında, o peer'ın kontrolcü ya da hedef olduğu tüm kontrol oturumlarını iptal eder: onayı kaldırır, ajana stop-control gönderir (hata yutulur) ve oturumu siler."""
+    """Peer ayrıldığında, o peer'ın kontrolcü ya da hedef olduğu tüm kontrol oturumlarını iptal eder: onayı kaldırır, ajana stop-control gönderir, ayrılan peer hedefse kontrolcüye remote-disconnected bildirir (hata yutulur) ve oturumu siler."""
     for sid, sess in list(control_sessions.items()):
         if peer_id not in (sess.get("controller_peer_id"), sess.get("target_peer_id")):
             continue
@@ -521,6 +521,13 @@ async def _peer_kontrol_oturumlarini_iptal_et(peer_id: str) -> None:
         if agent_ws:
             try:
                 await agent_ws.send_json({"type": "stop-control", "session_id": sid})
+            except Exception:
+                pass
+        # Hedef ayrıldıysa kontrolcü hâlâ bağlıdır; ona bildir. Kontrolcü ayrıldıysa bildirim gerekmez.
+        ctrl_ws = sess.get("controller_ws")
+        if ctrl_ws and peer_id == sess.get("target_peer_id") and peer_id != sess.get("controller_peer_id"):
+            try:
+                await ctrl_ws.send_json({"type": "remote-disconnected", "session_id": sid})
             except Exception:
                 pass
         control_sessions.pop(sid, None)

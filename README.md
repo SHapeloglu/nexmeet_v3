@@ -153,13 +153,13 @@ cd backend && uvicorn main:app --host 127.0.0.1 --port 8000
 |----------|----------|
 | `POST /api/join-token` | `{room_id}` → `{token, peer_id}` (20/dk). Yalnız giriş yapmış ve doğrulanmış kullanıcı; ad hesaptan gelir |
 | `POST /api/auth/kayit` | `{ad_soyad, eposta, parola}` → her durumda aynı yanıt (5/saat) |
-| `POST /api/auth/dogrula` | `{token}` → e-posta doğrulama |
+| `POST /api/auth/dogrula` | `{token}` → e-posta doğrulama (20/dk) |
 | `POST /api/auth/dogrulama-tekrar` | `{eposta}` → doğrulama mailini yeniden gönder (3/saat) |
 | `POST /api/auth/giris` | `{eposta, parola, yonlendirme}` → oturum çerezi (10/dk) |
 | `GET /api/ben` | Oturumdaki kullanıcı |
 | `POST /api/auth/cikis` | Oturumu sonlandırır |
 | `POST /api/auth/sifre-unuttum` | `{eposta}` → sıfırlama bağlantısı (3/saat) |
-| `POST /api/auth/sifre-sifirla` | `{token, parola}` → yeni parola, tüm oturumları kapatır |
+| `POST /api/auth/sifre-sifirla` | `{token, parola}` → yeni parola, tüm oturumları kapatır (10/saat) |
 | `POST /api/auth/hesabi-sil` | `{parola}` → hesabı ve oturumları siler |
 | `GET /api/saglik` | Servis ve veritabanı durumu |
 | `GET /api/room/{id}/info` | Yalnızca katılımcı sayısı |
@@ -167,10 +167,10 @@ cd backend && uvicorn main:app --host 127.0.0.1 --port 8000
 | `GET /api/download/{file_id}?token=` | Dosya indir (30/dk) |
 | `GET /api/room/{id}/files?token=` | Odadaki dosyalar |
 | `POST /api/tts/synthesize` | Metni çevir ve seslendir (30/dk) |
-| `POST /api/tts/voice-profile`, `GET …/status` | Ses profili (5/dk) |
-| `POST /api/control/request\|respond\|stop` | Uzak kontrol izin akışı (hepsi `token` ister) |
+| `POST /api/tts/voice-profile` (5/dk); `GET …/status` limitsiz | Ses profili |
+| `POST /api/control/request` (10/dk); `respond`, `stop` | Uzak kontrol izin akışı (hepsi `token` ister) |
 | `WS /ws/{room_id}/{peer_id}?token=` | Oda sinyalizasyonu |
-| `WS /ws/agent/{agent_id}?session_id=&key=` | Ajan kanalı |
+| `WS /ws/agent/{agent_id}?session_id=&key=` | Ajan kanalı. Anahtar URL'de taşınır; sunucu/proxy erişim logları anahtarı kaydedebilir (bilinen risk; tek kullanımlık ve kısa ömürlü) |
 | `WS /ws/control/{session_id}/{peer_id}?token=` | Kontrolcü kanalı |
 
 TTS uçları, TTS servisi hata verirse veya yanıt vermezse `502/504` döner; yapılandırılmamışsa `503`.
@@ -184,6 +184,7 @@ TTS uçları, TTS servisi hata verirse veya yanıt vermezse `502/504` döner; ya
 3. **B**, bilgisayarında ajanı başlatır ve bu iki değeri girer:
    - Windows: `windows_agent.bat` · Linux: `linux_agent.sh` (arayüzdeki ajan penceresinden indirilir)
    - ya da: `python agent.py --server wss://<sunucu> --session <oturum> --key <anahtar> --nogui`
+     (Canlıda `wss://` kullanın; `ws://` yalnız yerel test içindir. `agent.py`'nin varsayılanı `ws://localhost:8000`.)
 4. **A**, B'nin ekranını canlı görür ve fare/klavye ile kontrol eder; her iki taraf da oturumu durdurabilir. Ajan çalışırken fareyi sol üst köşeye götürmek de durdurur (FailSafe).
 
 Ajan gereksinimleri: `pyautogui`, `mss`, `websockets`, `pillow` (Linux'ta ayrıca `python3-xlib`, `python3-tk`, `scrot`).
@@ -194,7 +195,7 @@ Ajan gereksinimleri: `pyautogui`, `mss`, `websockets`, `pillow` (Linux'ta ayrıc
 
 ## 🔒 Güvenlik
 
-- **Token:** `/api/join-token` ile alınır, 1 saat geçerlidir; korumalı uçların hepsi doğrular. Süresi dolan token'lar ve eski kontrol oturumları temizlenir.
+- **Token:** `/api/join-token` ile alınır, 1 saat geçerlidir; korumalı uçların hepsi doğrular. Süresi dolan token'lar ve eski kontrol oturumları yalnız yeni bir katılım isteğinde (`/api/join-token`) temizlenir.
 - **Kimlik:** `peer_id` sunucuda üretilir; başkası aynı kimlikle bağlanamaz. Odalarda sahip/şifre yoktur: oda kodunu bilen katılabilir.
 - **Dosyalar:** yasaklı uzantılar (`.exe .bat .cmd .sh .ps1 .msi .dll .so .dylib .bin .com .scr .vbs .js .jar .py .php .rb`), 1 saat sonra silme; servis açılırken 1 saatten eski dosyalar da silinir.
 - **Hız sınırı:** `slowapi` ile uç noktalara göre (yukarıdaki tablo).

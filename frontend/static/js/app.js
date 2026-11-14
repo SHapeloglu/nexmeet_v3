@@ -1160,7 +1160,7 @@ function initFileDropZone() {
 }
 
 /**
- * Seçilen dosyaları sırayla yükler. 100 MB'tan büyük dosyalar atlanır ve kullanıcıya bildirilir.
+ * Seçilen dosyaları sırayla yükler. 50 MB'tan büyük dosyalar atlanır ve kullanıcıya bildirilir.
  * files: dosya listesi (File nesnelerinin dizisi).
  */
 async function handleFiles(files) {
@@ -1193,7 +1193,6 @@ async function uploadFile(file) {
   const formData = new FormData();
   formData.append('file', file);
   formData.append('peer_id', state.peerId);
-  formData.append('uploader_name', state.userName);
   formData.append('token', state.joinToken);
 
   return new Promise((resolve) => {

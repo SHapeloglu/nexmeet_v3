@@ -1549,6 +1549,25 @@ function onControlApproved(sessionId) {
   remote.controlWs.onclose = () => {
     if (remote.isViewing) stopRemoteControl();
   };
+  // Backend kareleri ve bildirimleri bu soketten (/ws/control) gönderir; işleyici yoksa kare hiç çizilmez.
+  remote.controlWs.onmessage = (event) => {
+    let msg;
+    try { msg = JSON.parse(event.data); } catch (e) { return; }
+    switch (msg.type) {
+      case 'remote-frame':
+        onRemoteFrame(msg);
+        break;
+      case 'remote-disconnected':
+        if (remote.isViewing) stopRemoteControl();
+        showToast('Ajan bağlantısı kesildi.');
+        break;
+      case 'error':
+        showToast(msg.message || 'Kontrol hatası.');
+        break;
+      default:
+        break;
+    }
+  };
 
   // FPS counter
   remote.frameCount = 0;

@@ -23,8 +23,9 @@ pip install -r backend/requirements.txt
 cd backend && uvicorn main:app --reload --port 8000     # main.py __main__ da bunu yapar
 
 # Testler (gerçek MySQL gerekir; tek kullanımlık konteyner, ortak sunucu (mysql-ortak) DEĞİL)
+python3 -m venv .venv-test && .venv-test/bin/pip install -r backend/requirements.txt -r tests/requirements.txt
 docker run -d --rm --name nexmeet-test-mysql -e MYSQL_ROOT_PASSWORD=<rastgele> \
-  -e MYSQL_DATABASE=nexmeet -p 127.0.0.1:33999:3306 mysql:8.0
+  -e MYSQL_DATABASE=nexmeet -p 127.0.0.1:33999:3306 --memory 512m mysql:8.0
 TEST_DB_PASSWORD=<rastgele> .venv-test/bin/pytest tests -q     # TEST_DB_PORT varsayılanı 33999
 docker stop nexmeet-test-mysql
 ```

@@ -11,10 +11,12 @@ Bu klasör yalnızca kaynak kodu içerir. Büyük model dosyaları repoda **yokt
 
 Ortam değişkeni: `API_KEY` (zorunlu; yoksa servis başlamaz). Değer repoya yazılmaz; konteynerde `tts.env` ile verilir.
 
-Yerelde çalıştırma (model dosyalarıyla birlikte):
+Derleme:
 
 ```bash
 docker build -f tts-service/Dockerfile.tts -t nexmeet-tts tts-service
 ```
+
+Derleme yalnız imajı üretir; servisin çalışması için yukarıdaki model dosyalarının konteynere bağlanması ve `API_KEY` verilmesi gerekir.
 
 Build bağlamı `tts-service/` olmalı (`COPY requirements.txt`, `COPY main.py`).

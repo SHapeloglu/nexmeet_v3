@@ -9,7 +9,7 @@ Tarayıcı (frontend/*.html + static/js/app.js, auth.js, hesabim.js)
   ▼
 nginx (nexmeet.powerbiegitimi.com) → FastAPI backend/main.py + auth.py (Docker konteyneri nexmeet, 127.0.0.1:8009)
   ├─ /api/upload/{room}, /api/download/{file_id}?token, /api/room/{room}/files  → uploads/ (TTL 1 saat)
-  ├─ WS /ws/agent/{agent_id}?session_id&key      ← uzak kontrol ajanı (agent.py, kontrol edilen PC)
+  ├─ WS /ws/agent/{agent_id}?session_id&key      ← uzak kontrol ajanı (agent.py, kontrol edilen PC). Anahtar URL'de taşınır; sunucu/proxy erişim logları anahtarı kaydedebilir (bilinen risk; tek kullanımlık ve kısa ömürlü)
   ├─ WS /ws/control/{session}/{controller_peer}  ← kontrol eden tarayıcı
   ├─ /api/control/request|respond|stop           ← izin akışı
   ├─ /api/auth/*, /giris, /kayit, /hesabim …     → MySQL (db.py, veritabanı nexmeet) + SMTP (mailer.py)
@@ -22,13 +22,13 @@ nginx (nexmeet.powerbiegitimi.com) → FastAPI backend/main.py + auth.py (Docker
 ## Backend
 
 - **`backend/main.py`:** oda, sinyalizasyon, dosya paylaşımı, uzak kontrol ve TTS proxy uçları.
-- **`backend/auth.py`:** üyelik. Kayıt, e-posta doğrulama, giriş, parola sıfırlama, çıkış, hesap silme ve sayfa yönlendirmeleri. Oturum ve tek kullanımlık token'lar veritabanında tutulur; token'ların yalnız SHA-256 özeti saklanır. Parolalar argon2 ile hash'lenir. Girişte 10 hatalı denemeden sonra hesap 15 dakika kilitlenir.
+- **`backend/auth.py`:** üyelik. Kayıt, e-posta doğrulama, giriş, parola sıfırlama, çıkış, hesap silme ve sayfa yönlendirmeleri. Oturum ve tek kullanımlık token'lar veritabanında tutulur; token'ların yalnız SHA-256 özeti saklanır. Parolalar argon2 ile hash'lenir. Girişte 10 hatalı denemeden sonra hesap 15 dakika kilitlenir. Kilit IP'den bağımsız, hesap bazlıdır; bu, hedefli hesap kilitleme (hizmet reddi) riskidir; bilinen ve kabul edilmiş risk (`backlog.md`, B1).
 - **`backend/db.py`:** MySQL bağlantısı (PyMySQL). Tablolar uygulama açılışında oluşturulur. Veritabanına bağlanılamazsa üyelik uçları 503 döner, toplantılar çalışmaya devam eder.
 - **`backend/mailer.py`:** doğrulama ve sıfırlama postaları. `MAIL_BACKEND=smtp` (STARTTLS) ya da test için `dosya`.
 - **Durum bellekte:** odalar, peer'lar, paylaşılan dosyalar, kontrol oturumları. Tek süreç; yeniden başlatmada sıfırlanır.
-- **Join token:** `generate_join_token` / `validate_join_token`. `secrets.token_urlsafe` ile rastgele üretilir, bellekte tutulur, 1 saat geçerlidir ve `user_id` saklar. `SECRET_KEY` kullanılmaz. Süresi dolanlar `cleanup_expired_tokens` ile temizlenir. Bir hesap silinince o kullanıcının token'ları da düşer.
+- **Join token:** `generate_join_token` / `validate_join_token`. `secrets.token_urlsafe` ile rastgele üretilir, bellekte tutulur, 1 saat geçerlidir ve `user_id` saklar. `SECRET_KEY` kullanılmaz. Süresi dolanlar `cleanup_expired_tokens` ile temizlenir; bu temizlik yalnız yeni katılımda (`/api/join-token`) çalışır. Bir hesap silinince o kullanıcının token'ları da düşer.
 - **Join token'ı yalnız doğrulanmış oturum alır;** görünen ad hesaptan gelir, istemciden alınan ad yok sayılır.
-- **Dosya:** `validate_file` (uzantı, MIME, boyut en fazla 50 MB), `auto_delete_file` (`FILE_TTL_SECONDS = 3600`). Servis açılırken 1 saatten eski dosyalar da silinir.
+- **Dosya:** `validate_file` (uzantı doğrulama; boyut en fazla 50 MB), `auto_delete_file` (`FILE_TTL_SECONDS = 3600`). Servis açılırken 1 saatten eski dosyalar da silinir.
 - **Güvenlik katmanları:** `slowapi` ile uç noktalara göre hız sınırı; CORS `ALLOWED_ORIGINS` ile; üyelik uçlarında `origin_kontrol`.
 
 ## Uzak Kontrol
@@ -40,12 +40,12 @@ Kontrol edilecek bilgisayarda `agent.py` (Windows `.bat` / Linux `.sh` başlatı
 3. Ajan bu anahtarla bağlanır. Sunucu anahtarı ilk kabulde siler; ikinci bağlantı reddedilir.
 4. Fare ve klavye olayları backend üzerinden ajana iletilir. Her iki taraf oturumu durdurabilir.
 
-Ajan iki yerde bulunur: `agent/` (kaynak) ve `frontend/static/agent/` (kullanıcıya indirilen kopya). Ajan değiştiğinde iki yer birlikte güncellenmelidir.
+Ajan iki yerde bulunur: `agent/` (kaynak) ve `frontend/static/agent/` (kullanıcıya indirilen kopya). Ajan değiştiğinde iki yer birlikte güncellenmelidir (2026-11-11 itibarıyla farklılar; bkz. `task.md`).
 
 ## Dağıtım
 
 - **Canlı yol Docker Compose;** compose dizini sunucuda `/opt/nexmeet` (repo dışı).
-- **Konteyner `nexmeet`:** uvicorn, `127.0.0.1:8009`, ortam `nexmeet.env`, yüklemeler için `./uploads` volume, `restart unless-stopped`. İmaj `python:3.12-slim` üzerine kurulur; repodaki karşılığı `docker/Dockerfile` ve `docker/docker-compose.yml`dir. Etiketler: `nexmeet:latest` (güncel), `nexmeet:2026-11-09` (güncel sürüm), `rollback-*` (geri dönüş için önceki imajlar).
+- **Konteyner `nexmeet`:** uvicorn, `127.0.0.1:8009`, ortam `nexmeet.env`, yüklemeler için `./uploads` volume, `restart unless-stopped`. İmaj `python:3.12-slim` üzerine kurulur; repodaki karşılığı `docker/Dockerfile` ve `docker/docker-compose.yml`dir. Etiketler: `nexmeet:latest` (güncel), `nexmeet:2026-11-09` (canlıdaki sürüm), `rollback-*` (geri dönüş için önceki imajlar). origin/main'de PR #13-15 ile sonraki düzeltmeler canlıya alınmadı.
 - **Konteyner `nexmeet-tts`:** Kokoro ONNX TTS, ortam `tts.env`, `restart unless-stopped`. Kaynağı repoda: `tts-service/` (`Dockerfile.tts`, `main.py`). Model dosyaları repoda değildir.
 - **Ağlar:** `nexmeet` (dahili) ve dış `ortak-db` (üyelik veritabanı `mysql-ortak`).
 - **Otomatik uyku (AutoSleep):** sunucuda çalışır; uygulamanın dışındadır.

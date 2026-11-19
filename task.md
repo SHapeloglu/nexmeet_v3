@@ -32,19 +32,20 @@ Canlı dağıtım Docker Compose (`/opt/nexmeet`); repo ile sunucu arasındaki f
 - [x] (b) TTS servisi kaynağı repoya eklendi (PR #5, `tts-service/`)
 - [x] (c) Üyelik veritabanı bağlantısı doğrulandı (konteyner logu); SMTP açık, yukarıya bkz.
 - [x] (d) Eski systemd birimleri kaldırıldı: `nexmeet.service`, `nexmeet-tts.service`, `/root/nexmeet` (yedek sunucuda)
+- [x] (e) 2026-11-19 canlıya dağıtım (main `3324510`, `nexmeet:2026-11-19`). Canlı artık main ile aynı kodu çalıştırıyor.
+- [ ] 🟠 **Uçtan uca kontrol testi:** Uzak masaüstü akışı (gerçek ajan + iki tarayıcı) canlıda denenmedi. Kod düzeyinde ve birim testleriyle doğrulandı.
+- [ ] 🟡 **Sunucu temizliği:** `/opt/nexmeet/yedek-20261119/` ve `rollback` imajları (`nexmeet:rollback-2026-10-21`, `-2026-11-08`, `-2026-11-09`) tutuluyor; silme kararı sonra.
 
 ## 🚧 Devam Eden
 
 - [ ] **B1: IP'den bağımsız hesap kilidi** — KARAR: bu turda değiştirilmedi; kabul edilmiş risk. Gerekçe: kilidi IP'ye bağlamak yeni şema ve akış değişikliği gerektirir (backlog'da ayrıca). Kaynak: `backend/auth.py` `_basarisiz_giris` (satır 294), `_giris_islem` (satır 483, çağrı 496).
 - [ ] 🟠 **B4: mail kotası yarışı** — KABUL EDİLDİ, bilinen risk. Eşzamanlı istekler SMTP süresince kotayı en fazla 5+N-1 aşabilir. Kaynak: `backend/auth.py` `_mail_kotasi_var` (satır 236), `_mail_kaydet_islem` (satır 253), `_postalari_gonder` (satır 306-309, kayıt yalnız gönderim başarılı olunca).
-- [ ] **C10: testler — upload, kontrol yetkisi, peer ayrılması.** Henüz yazılmadı; yeni dosya `tests/test_kontrol_yukleme.py` üzerinde çalışılıyor.
-- [ ] **A2b: kontrolcüye bildirim eksik.** Peer ayrılınca karşı tarafa mesaj gitmiyor.
-- [ ] **F1: ön yüz kalıntıları.** `frontend/static/js/app.js:1163` JSDoc hâlâ "100 MB" diyor (sınır 50 MB); `app.js:1196` `uploader_name` alanı gönderiliyor ama backend bunu okumuyor (yükleyen adı token'dan alınıyor, `backend/main.py:354`).
 - [ ] 🟠 **Mail gerçek akış testi:** Sıradaki bölümündeki mevcut madde; değiştirilmedi, 🟠 öncelik korunuyor.
-- [ ] **Canlıya alma:** PR #13, #14, #15 main'de (merge commit). Canlı sunucu henüz bu sürümü çalıştırmıyor. Dağıtım ayrı bir karar.
 
 ## ✅ Tamamlanan
 
+- [x] 2026-11-19 ✅ — Canlıya dağıtım: `nexmeet:2026-11-19` ve `nexmeet-tts:latest` (`64a7ddc59a5e`) main `3324510` kaynağından derlendi; konteynerler yeniden oluşturuldu. Geri dönüş: `nexmeet:rollback-2026-11-09`, `nexmeet-tts:rollback-2026-11-19`. Eski kaynak `/opt/nexmeet/yedek-20261119/`. Dağıtım öncesi 62 test geçti; duman testi geçti. Bellekteki join token'lar ve kontrol oturumları sıfırlandı.
+- [x] 2026-11-18 ✅ — PR #16–#21 main'e birleşti: belge tutarlılığı (#16, #17), JSDoc ve kullanılmayan alan (#18; F1), kontrol iptal bildirimi (#20; A2b), kontrol soketine token ve kare/bildirim işleyicisi (#19; kontrol özelliği önceden çalışmıyordu), 15 yeni test (#21; C10). Birleşik ağaçta 62 test geçti.
 - [x] 2026-11-13/14 — PR #13 (stop-control yetkisi, peer ayrılınca kontrol iptali, yükleyen adı token'dan, MIME belgesi), PR #14 (TTS CORS kaldırıldı, dosya sınırı 50 MB), PR #15 (doğrula ve sıfırla hız sınırı, kota yalnız başarılı gönderimde) main'e birleşti. Birleşik ağaçta geçici MySQL ile 47 test geçti (sunucuda, işlem sonrası silindi).
 
 - [x] 2026-11-11 — `architect.md`, `README.md`, `CLAUDE.md`, `backlog.md`, `task.md` ve `session.md` kodla karşılaştırılıp güncellendi (üyelik katmanı, Argos çeviri, yalnız STUN, ajan anahtarı, test komutu, `uploads/` durumu). PR #12 (`docs/gecmis-temizligi`) ile birleştirildi.

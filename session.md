@@ -157,3 +157,26 @@
 - Mail gerçek akış testi.
 
 **Sıradaki adım:** D2 (belgelerin düzeltilmesi), sonra C10, A2b, F1 dalları; ardından canlıya alma kararı.
+
+## 2026-11-18 — 2026-11-19 — Belge/kod düzeltmeleri, test ve canlıya dağıtım
+
+**Yapılanlar:**
+- PR #16–#21 main'e birleşti (belgeler, F1, A2b, kontrol soketi token'ı, 15 yeni test). Birleşik ağaçta geçici MySQL ile 62 test geçti.
+- Kontrol özelliğinin main'de çalışmadığı doğrulandı: kontrol soketi token'sız açılıyordu ve kare işleyicisi yoktu. Düzeltildi (PR #19). Uçtan uca denenmedi.
+- Canlı sunucu erişilemez kaldı (SSH zaman aşımı) bir süre; sonra erişildi. Testler sunucuda `nohup` ile arka planda çalıştırıldı ve tamamlandı (62 geçti), geçici MySQL ve dizin temizlendi.
+- Canlıya dağıtım: sunucudaki `src/` ve `tts/` yedeklendi (`/opt/nexmeet/yedek-20261119/`), main kaynağıyla eşitlendi; `nexmeet:2026-11-19` ve `nexmeet-tts:latest` derlendi; `docker compose up -d` ile yeniden oluşturuldu.
+- Geri dönüş imajları etiketlendi: `nexmeet:rollback-2026-11-09`, `nexmeet-tts:rollback-2026-11-19`.
+- Duman testi (sunucu içinden): giriş/kayıt sayfaları 200, oturumsuz yönlendirme, `/api/ben` ve hesap silme yetkisiz 401, kontrol isteği yetkisiz 401. Loglarda hata yok; DB ve TTS modelleri yüklü.
+
+**Kararlar / neden:**
+- Dağıtım, kullanıcının "canlıya dağıt" onayıyla yapıldı. Kontrol soketi düzeltmesi ve kontrol iptal bildirimi bu sürümle canlıya geldi.
+- Eski imajlar ve yedek kaynak silinmedi; geri dönüş için tutuluyor.
+- Canlı kökenli kaynak (`/opt/nexmeet/src/backend/app.js`, `src/backend/tts/`) yedeğe taşındı; main'de yok (CLAUDE.md'deki kaldırma kararıyla uyumlu).
+
+**Açık sorunlar:**
+- Uçtan uca kontrol testi (gerçek ajan + iki tarayıcı) yapılmadı.
+- Gerçek mail akışı (kayıt, parola sıfırlama) yapılmadı.
+- Dış DNS'ten `nexmeet.powerbiegitimi.com` sunucudan çözülemiyor; nginx yerelde 200 veriyor. Dış erişim tarayıcıdan doğrulanmalı.
+- Kararı bekleyenler: start.bat silinmesi, agent kopyalarının eşitlenmesi, eski TURN alan adının geçmişten temizlenmesi (yeniden yazma), yedek ve rollback imajlarının silinmesi.
+
+**Sıradaki adım:** Tarayıcıdan dış erişim ve kontrol akışının uçtan uca testi; bekleyen kararlar.

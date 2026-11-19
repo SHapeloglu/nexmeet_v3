@@ -47,10 +47,10 @@
 - **Neden:** eski commit'lerde `TURN_URLS` satırındaki TURN alan adı duruyor. Parola ve IP'ler temizlendi; alan adı temizlenmedi.
 - **Notlar:** KARAR BEKLİYOR: geçmiş yeniden yazılıp zorla yüklensin mi?
 
-### Kökteki start.bat
+### Kökteki start.bat (kapandı)
 - **Kategori:** teknik borç
-- **Neden:** kişisel bir Windows yolu içeriyor; `scripts/start.bat` ile ayrışmış.
-- **Notlar:** KARAR BEKLİYOR: silinsin mi, yoksa `scripts/start.bat` mi tek kopya olarak kalsın?
+- **Neden:** kişisel bir Windows yolu içeriyordu; `scripts/start.bat` ile ayrışmıştı.
+- **Notlar:** Kullanıcı onayıyla silindi (`chore/kaldir-kok-start-bat`). Tek kopya `scripts/start.bat`.
 
 ## Ekleme Şablonu
 

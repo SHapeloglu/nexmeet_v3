@@ -4,7 +4,7 @@
 
 - [ ] 🟠 **Ajan kopyaları ayrışmış:** `frontend/static/agent/agent.py` (indirilen kopya: `--key-file`, `NEXMEET_AGENT_KEY`, anahtar maskeleme) `agent/agent.py` kaynağından yeni; kaynak bu sürüme getirilmeli. 2026-10-18'deki "eşitlendi" notu artık geçerli değil.
 - [ ] 🟠 **Eski TURN alan adı geçmişte:** `TURN_URLS = 'turn:nexmeet.powerbi.com.tr:3478'` satırı eski commit'lerde duruyor. Parola ve IP'ler temizlendi, alan adı temizlenmedi. Karar bekliyor: geçmiş yeniden yazılıp zorla yüklensin mi?
-- [ ] 🟡 **Kökteki `start.bat` eski kopya:** kişisel Windows yolu (`C:\Users\yeliz\...`) içeriyor ve `scripts/start.bat` ile ayrışmış. Silinmesi karar bekliyor.
+- [x] 2026-11-19 ✅ ~~**Kökteki `start.bat` eski kopya**~~ — kişisel Windows yolu içeriyordu; kullanıcı onayıyla silindi. Tek kopya `scripts/start.bat`.
 - [ ] 🟠 **Üyelik canlı, gerçek mail gönderimi test edilmedi:** veritabanı bağlantısı canlı (`mysql-ortak:3306/nexmeet`). SMTP sunucusuna bağlantı, STARTTLS ve AUTH teklifi doğrulandı (2026-11-09, mail gönderilmedi). Kayıt/parola sıfırlama mailinin gerçekten ulaştığı tarayıcı/mail kutusunda henüz denenmedi.
 - [x] 2026-11-09 ✅ ~~**Git geçmişinde kişisel veri ve eski TURN parolası**~~ — `uploads/` (özgeçmiş PDF/JPG), eski TURN parolası ve eski public IP'ler tüm dallardan çıkarıldı; `git filter-repo` ile yeniden yazıldı ve zorla yüklendi. Yedek: yerelde ayna klon (`~/nexmeet-backup-20261109-2321-mirror.git`).
 - [x] 2026-11-09 ✅ ~~**TURN fiilen yok**~~ — sabit kullanıcı/şifre `app.js`'ten kaldırıldı (PR #7); yalnız STUN kullanılıyor. Coturn kurulumu `backlog.md`'de.

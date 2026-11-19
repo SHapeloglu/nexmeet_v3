@@ -38,7 +38,7 @@ echo.
 
 :: Sunucu adresi
 REM Kullaniciya sunucu adresini sorar. set /p girilen metni degiskene atar. Bos birakilirsa asagida localhost varsayilir.
-set /p SERVER="  Sunucu adresi (ornek: ws://192.168.2.75:8000): "
+set /p SERVER="  Sunucu adresi (ornek: ws://<sunucu>:8000): "
 if "%SERVER%"=="" set SERVER=ws://localhost:8000
 
 :: Oturum kodu

@@ -96,7 +96,7 @@ echo ""
 
 # ── Bağlantı bilgileri ───────────────────────────────────────────────────────
 # Kullanicidan baglanti bilgilerini ister. Sunucu adresi bos birakilirsa ws://localhost:8000 kullanilir.
-read -p " 🌐 Sunucu adresi (örn: ws://192.168.1.75:8000): " SERVER
+read -p " 🌐 Sunucu adresi (örn: ws://<sunucu>:8000): " SERVER
 SERVER=${SERVER:-ws://localhost:8000}
 
 read -p " 🔑 Oturum kodu (NexMeet'ten kopyala): " SESSION

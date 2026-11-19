@@ -375,7 +375,7 @@ def run_cli_interactive():
     print("\n" + "="*50)
     print("  NexMeet Uzak Kontrol Ajanı")
     print("="*50)
-    server = input("Sunucu adresi (örn: ws://192.168.1.10:8000): ").strip()
+    server = input("Sunucu adresi (örn: ws://<sunucu>:8000): ").strip()
     session = input("Oturum kodu: ").strip()
     key = input("Ajan anahtarı (NexMeet'ten kopyala): ").strip()
     mon_count = get_monitor_count()

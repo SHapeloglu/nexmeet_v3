@@ -180,3 +180,27 @@
 - Kararı bekleyenler: start.bat silinmesi, agent kopyalarının eşitlenmesi, eski TURN alan adının geçmişten temizlenmesi (yeniden yazma), yedek ve rollback imajlarının silinmesi.
 
 **Sıradaki adım:** Tarayıcıdan dış erişim ve kontrol akışının uçtan uca testi; bekleyen kararlar.
+
+## 2026-11-19 — 2026-11-24 — Canlı posta testi, DNS bulgusu ve dokümantasyon güncellemesi
+
+**Yapılanlar:**
+- Kökteki `start.bat` kaldırma (PR #23, `f9a183c`) main'e birleşti.
+- Ajan kopyası eşitleme PR #24 (`fix/ajan-kopyalari-esitle`) açıldı, birleşmedi. Kaynak `agent/` indirilen kopyayla eşitlendi; TURN ve IP ifadeleri `<sunucu>` ile değiştirildi. `py_compile` ve `bash -n` geçti.
+- Canlıda test kullanıcısı oluşturuldu (kullanıcının onayladığı test adresi); doğrulama ve parola sıfırlama mailleri gönderildi (`mail_log` kayıtları). Geçici parola sunucuda 600 izinli bir dosyada tutuldu; test bitince silinecek.
+- Bağlantıların açılmamasının nedeni: `nexmeet.powerbiegitimi.com` için DNS kaydı yok (NXDOMAIN; zone Wix DNS'te). Uygulama katmanında kusur bulunmadı.
+- Konteynerler AutoSleep ile durmuştu; uyandırma yolu test edildi (istek 307 ile uyandırıp 200 döndü).
+- Belgeler güncel hâle getirildi (`session.md`, `task.md`, `backlog.md`, `architect.md`): tamamlanan C10, A2b, F1 kayıtları backlog'dan çıkarıldı; canlı imaj etiketleri düzeltildi; DNS, mail teslimi ve sıfırlama metni maddeleri eklendi.
+
+**Kararlar / neden:**
+- Mail testi kullanıcının onayladığı adresle yapıldı; test hesabının silinmesi kullanıcı onayına bırakıldı.
+- Doğrulama bağlantısı 24 saat, sıfırlama bağlantısı 1 saat geçerli; DNS düzeldikten sonra mailler yeniden gönderilecek.
+- Gmail bağlayıcısı test kutusuna erişemediği için teslim kontrolü kullanıcı tarafından yapılacak.
+
+**Açık sorunlar:**
+- DNS A kaydı henüz eklenmedi (kullanıcı işlemi).
+- Mail teslimi ve bağlantıların tarayıcıda açılması doğrulanmadı.
+- `sifre-unuttum` yanıt metni yanlış.
+- PR #24 birleşmedi; uçtan uca kontrol testi yapılmadı.
+- Test hesabı ve sunucudaki geçici dizinler silinmedi.
+
+**Sıradaki adım:** DNS kaydı eklendiğinde doğrulama ve sıfırlama mailleri yeniden gönderilecek; test hesabı silme onayı.

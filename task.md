@@ -2,10 +2,12 @@
 
 ## 🔜 Sıradaki
 
-- [ ] 🟠 **Ajan kopyaları ayrışmış:** `frontend/static/agent/agent.py` (indirilen kopya: `--key-file`, `NEXMEET_AGENT_KEY`, anahtar maskeleme) `agent/agent.py` kaynağından yeni; kaynak bu sürüme getirilmeli. 2026-10-18'deki "eşitlendi" notu artık geçerli değil.
+- [ ] 🟠 **Ajan kopyaları ayrışmış:** `frontend/static/agent/agent.py` (indirilen kopya: `--key-file`, `NEXMEET_AGENT_KEY`, anahtar maskeleme) `agent/agent.py` kaynağından yeni; kaynak bu sürüme getirilmeli. 2026-10-18'deki "eşitlendi" notu artık geçerli değil. PR #24 (`fix/ajan-kopyalari-esitle`) açık; uçtan uca kontrol testinden sonra birleşecek.
 - [ ] 🟠 **Eski TURN alan adı geçmişte:** `TURN_URLS = 'turn:nexmeet.powerbi.com.tr:3478'` satırı eski commit'lerde duruyor. Parola ve IP'ler temizlendi, alan adı temizlenmedi. Karar bekliyor: geçmiş yeniden yazılıp zorla yüklensin mi?
 - [x] 2026-11-19 ✅ ~~**Kökteki `start.bat` eski kopya**~~ — kişisel Windows yolu içeriyordu; kullanıcı onayıyla silindi. Tek kopya `scripts/start.bat`.
-- [ ] 🟠 **Üyelik canlı, gerçek mail gönderimi test edilmedi:** veritabanı bağlantısı canlı (`mysql-ortak:3306/nexmeet`). SMTP sunucusuna bağlantı, STARTTLS ve AUTH teklifi doğrulandı (2026-11-09, mail gönderilmedi). Kayıt/parola sıfırlama mailinin gerçekten ulaştığı tarayıcı/mail kutusunda henüz denenmedi.
+- [ ] 🟠 **Mail teslimi ve bağlantılar test edilmedi:** canlıda SMTP ile doğrulama ve sıfırlama mailleri gönderildi (2026-11-19, `mail_log` kayıtları). Mailin kutuya ulaştığı ve bağlantıların açıldığı henüz doğrulanmadı; bağlantılar DNS kaydı eklenmediği için açılamadı ve süreleri dolmuş olabilir. Bkz. DNS maddesi.
+- [ ] 🟠 **Dış DNS kaydı yok:** `nexmeet.powerbiegitimi.com` için A kaydı Wix DNS'te eklenmemiş (NXDOMAIN). Kayıt eklenince doğrulama ve sıfırlama mailleri yeniden gönderilip bağlantılar tarayıcıda denenecek.
+- [ ] 🟡 **Parola sıfırlama yanıt metni yanlış:** `POST /api/auth/sifre-unuttum` "Doğrulama e-postası gönderildi (kayıtlıysa)." diyor; sıfırlama metni olmalı. Kod düzeltmesi bekliyor.
 - [x] 2026-11-09 ✅ ~~**Git geçmişinde kişisel veri ve eski TURN parolası**~~ — `uploads/` (özgeçmiş PDF/JPG), eski TURN parolası ve eski public IP'ler tüm dallardan çıkarıldı; `git filter-repo` ile yeniden yazıldı ve zorla yüklendi. Yedek: yerelde ayna klon (`~/nexmeet-backup-20261109-2321-mirror.git`).
 - [x] 2026-11-09 ✅ ~~**TURN fiilen yok**~~ — sabit kullanıcı/şifre `app.js`'ten kaldırıldı (PR #7); yalnız STUN kullanılıyor. Coturn kurulumu `backlog.md`'de.
 
@@ -35,6 +37,7 @@ Canlı dağıtım Docker Compose (`/opt/nexmeet`); repo ile sunucu arasındaki f
 - [x] (e) 2026-11-19 canlıya dağıtım (main `3324510`, `nexmeet:2026-11-19`). Canlı artık main ile aynı kodu çalıştırıyor.
 - [ ] 🟠 **Uçtan uca kontrol testi:** Uzak masaüstü akışı (gerçek ajan + iki tarayıcı) canlıda denenmedi. Kod düzeyinde ve birim testleriyle doğrulandı.
 - [ ] 🟡 **Sunucu temizliği:** `/opt/nexmeet/yedek-20261119/` ve `rollback` imajları (`nexmeet:rollback-2026-10-21`, `-2026-11-08`, `-2026-11-09`) tutuluyor; silme kararı sonra.
+- [ ] 🟡 **Test hesabı temizliği:** canlıdaki test kullanıcısı ve sunucudaki `/tmp/nm-mailtest-*` geçici dizinleri (içinde geçici parola dosyası var) kullanıcı onayıyla silinecek.
 
 ## 🚧 Devam Eden
 

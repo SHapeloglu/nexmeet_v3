@@ -45,7 +45,7 @@ Ajan iki yerde bulunur: `agent/` (kaynak) ve `frontend/static/agent/` (kullanıc
 ## Dağıtım
 
 - **Canlı yol Docker Compose;** compose dizini sunucuda `/opt/nexmeet` (repo dışı).
-- **Konteyner `nexmeet`:** uvicorn, `127.0.0.1:8009`, ortam `nexmeet.env`, yüklemeler için `./uploads` volume, `restart unless-stopped`. İmaj `python:3.12-slim` üzerine kurulur; repodaki karşılığı `docker/Dockerfile` ve `docker/docker-compose.yml`dir. Etiketler: `nexmeet:latest` (güncel), `nexmeet:2026-11-09` (canlıdaki sürüm), `rollback-*` (geri dönüş için önceki imajlar). origin/main'de PR #13-15 ile sonraki düzeltmeler canlıya alınmadı.
+- **Konteyner `nexmeet`:** uvicorn, `127.0.0.1:8009`, ortam `nexmeet.env`, yüklemeler için `./uploads` volume, `restart unless-stopped`. İmaj `python:3.12-slim` üzerine kurulur; repodaki karşılığı `docker/Dockerfile` ve `docker/docker-compose.yml`dir. Etiketler: `nexmeet:latest` ve `nexmeet:2026-11-19` (canlıdaki sürüm, main `3324510`), `rollback-*` (geri dönüş için önceki imajlar; ör. `nexmeet:rollback-2026-11-09`).
 - **Konteyner `nexmeet-tts`:** Kokoro ONNX TTS, ortam `tts.env`, `restart unless-stopped`. Kaynağı repoda: `tts-service/` (`Dockerfile.tts`, `main.py`). Model dosyaları repoda değildir.
 - **Ağlar:** `nexmeet` (dahili) ve dış `ortak-db` (üyelik veritabanı `mysql-ortak`).
 - **Otomatik uyku (AutoSleep):** sunucuda çalışır; uygulamanın dışındadır.

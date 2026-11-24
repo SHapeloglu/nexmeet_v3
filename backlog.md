@@ -22,21 +22,6 @@
 - **Neden:** kota kontrolü (`_mail_kotasi_var`) ile kayıt (`mail_log`) arasında bekleme var; kayıt yalnız başarılı gönderimden sonra yazıldığı için eşzamanlı isteklerde kota aşılabilir (en fazla 5+N-1, N eşzamanlı istek).
 - **Notlar:** tam çözüm gönderimden önce rezervasyon gerektirir; bu, "yalnız başarılı gönderimden sonra yaz" kuralıyla çelişir. KARAR: kabul edilmiş risk. Kaynak: `backend/auth.py` (`_mail_kotasi_var`, `_postalari_gonder`).
 
-### C10: Testlerin kapsamı
-- **Kategori:** teknik borç
-- **Neden:** dosya yükleme, indirme, kontrol oturumu ve TTS uçları test edilmiyor.
-- **Notlar:** mevcut test sayısı 47 (35 test fonksiyonu, parametrize dahil), hepsi üyelik ve sayfa (`tests/test_uyelik.py`). Bu iş ayrı bir dalda yapılıyor; tamamlanınca bu madde kaldırılır.
-
-### A2b: Peer ayrılınca karşı tarafa bildirim
-- **Kategori:** iyileştirme
-- **Neden:** kontrolcü, hedef peer ayrılınca "İzin bekleniyor" hatası alıyor (`backend/main.py`, `İzin bekleniyor` mesajı).
-- **Notlar:** `_peer_kontrol_oturumlarini_iptal_et` (`backend/main.py`) oturumu siler ve ajana `stop-control` gönderir; kontrolcüye bildirim göndermez. Ön yüz işleme gerekir.
-
-### F1: Ön yüz tutarsızlıkları (küçük)
-- **Kategori:** teknik borç
-- **Neden:** JSDoc ve gönderilen alanlar kodla uyuşmuyor.
-- **Notlar:** `frontend/static/js/app.js:1163` JSDoc "100 MB" diyor; kod 50 MB (`app.js:1169`). `app.js:1196` `uploader_name` alanını gönderiyor, backend okumuyor (yükleyen adı token'dan alınır, `backend/main.py` `upload_file`).
-
 ### Ajan kopyası ayrışması
 - **Kategori:** teknik borç
 - **Neden:** `agent/agent.py` (kaynak) ile `frontend/static/agent/agent.py` (indirilen kopya) ayrışmış; kopya daha yeni (`--key-file`, `NEXMEET_AGENT_KEY`, anahtar maskeleme).
